@@ -176,7 +176,7 @@ const CAL: Record<string, number> = {
   scatter: 0.1039,
   megaways: 0.0224,
   cluster: 3.22,
-  holdwin: 0.49,
+  holdwin: 0.254,
   cascade: 0.1307,
   book: 0.5255,
   jackpot: 1.64,
@@ -722,22 +722,31 @@ const scatterPays: SlotGame = (() => {
 // 8. Hold & Win — collect coins, lock them, 3 respins; full board = grand.
 // ---------------------------------------------------------------------------
 const holdwin: SlotGame = (() => {
-  const C = "🪙";
+  const C = "🪙"; // money symbol — triggers the hold & spin, doesn't pay lines
   const blank = "▫️";
   const syms = ["🔔", "🍀", "💵", "💎", C, blank];
-  const weights = [20, 18, 14, 8, 10, 30];
-  // Each coin carries a value; rarely it's a jackpot coin (Big Bass style).
+  const weights = [24, 19, 12, 7, 8, 30];
+  // Normal paying base game (ways-to-win) so most spins can land a small win,
+  // exactly like a real Lightning Link / 88 Fortunes base game.
+  const table: Record<string, [number, number, number]> = {
+    "🔔": [0.3, 0.8, 2],
+    "🍀": [0.4, 1.2, 3],
+    "💵": [0.7, 2.5, 7],
+    "💎": [1.5, 6, 18],
+  };
+  const pay = (s: Sym, reels: number) => (table[s] ? (table[s][reels - 3] ?? 0) * CAL.holdwin : 0);
+  // Coins carry a real cash value (a true multiple of bet); rare jackpot coins.
   const makeCoin = (): { v: number; label: string } => {
-    if (Math.random() < 0.985) {
+    if (Math.random() < 0.992) {
       const x = Math.random();
-      const v = x < 0.6 ? 1 : x < 0.85 ? 2 : x < 0.96 ? 5 : 15;
+      const v = x < 0.55 ? 0.5 : x < 0.82 ? 1 : x < 0.95 ? 2 : 5;
       return { v, label: `${v}×` };
     }
     const j = Math.random();
-    if (j < 0.6) return { v: 20, label: "MINI" };
-    if (j < 0.85) return { v: 50, label: "MINOR" };
-    if (j < 0.97) return { v: 150, label: "MAJOR" };
-    return { v: 500, label: "GRAND" };
+    if (j < 0.6) return { v: 10, label: "MINI" };
+    if (j < 0.85) return { v: 25, label: "MINOR" };
+    if (j < 0.97) return { v: 60, label: "MAJOR" };
+    return { v: 150, label: "GRAND" };
   };
   const COLS = 5;
   const ROWS = 4;
@@ -747,21 +756,34 @@ const holdwin: SlotGame = (() => {
     name: "Coin Vault",
     style: "Hold & Win",
     icon: "🪙",
-    blurb: "Collect 6+ coins; values & jackpot coins lock for respins.",
+    blurb: "Ways-pay base game · 6 🪙 trigger lock-and-respin with jackpot coins.",
     symbols: syms,
     cols: COLS,
     spin: () => {
       const grid = genGrid(COLS, ROWS, syms, weights);
       const frames: Frame[] = [];
+
+      // 1. Base game pays on the value symbols (coin is treated as a scatter).
+      const base = evalWays(grid, pay, { scatter: C });
+      let total = base.mult;
+
       const coins = new Map<string, { v: number; label: string }>();
       for (let c = 0; c < COLS; c++)
         for (let r = 0; r < ROWS; r++)
           if (grid[c][r] === C) coins.set(key(c, r), makeCoin());
       const overlaysOf = () => Object.fromEntries([...coins].map(([k, info]) => [k, info.label]));
-      frames.push({ grid, highlights: [...coins.keys()], overlays: overlaysOf(), label: `${coins.size} coins` });
-      if (coins.size < 6) return { frames, totalMult: 0 };
 
-      // Hold & Win: lock coins, 3 respins that reset whenever a new coin lands.
+      const trigger = coins.size >= 6;
+      frames.push({
+        grid,
+        highlights: [...base.highlights, ...coins.keys()],
+        overlays: overlaysOf(),
+        win: base.mult,
+        label: trigger ? `${coins.size} 🪙 — HOLD & WIN!` : coins.size > 0 ? `${coins.size} 🪙` : undefined,
+      });
+      if (!trigger) return { frames, totalMult: cap(total) };
+
+      // 2. Hold & Win: lock coins, 3 respins that reset whenever a new coin lands.
       let respins = 3;
       const board = grid.map((col, c) => col.map((_, r) => (coins.has(key(c, r)) ? C : blank)));
       while (respins > 0 && coins.size < CELLS) {
@@ -771,7 +793,7 @@ const holdwin: SlotGame = (() => {
           for (let r = 0; r < ROWS; r++) {
             const k = key(c, r);
             if (coins.has(k)) continue;
-            if (Math.random() < 0.16) {
+            if (Math.random() < 0.05) {
               coins.set(k, makeCoin());
               board[c][r] = C;
               newCoin = true;
@@ -781,14 +803,16 @@ const holdwin: SlotGame = (() => {
         frames.push({ grid: board.map((c) => [...c]), highlights: [...coins.keys()], overlays: overlaysOf(), label: `Respin · ${respins} left` });
       }
 
-      let total = 0;
-      for (const info of coins.values()) total += info.v;
-      let note: string | undefined;
+      // 3. Pay the sum of all coin values (their face value is the real win).
+      let coinSum = 0;
+      for (const info of coins.values()) coinSum += info.v;
+      total += coinSum;
+      let note: string | undefined = `Coins: ${coinSum}×`;
       if (coins.size >= CELLS) {
-        total += 500; // full board awards the Grand
+        total += 150; // full board awards the Grand
         note = "GRAND JACKPOT — full board!";
       }
-      return { frames, totalMult: cap(total * CAL.holdwin), note };
+      return { frames, totalMult: cap(total), note };
     },
   };
 })();
