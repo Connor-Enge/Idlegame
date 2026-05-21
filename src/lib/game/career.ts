@@ -1,4 +1,4 @@
-import { CAREER_TRACKS, SALARY_SCALE, SHIFT_GIG_SCALE } from "./data";
+import { CAREER_TRACKS, SALARY_SCALE, SHIFT_GIG_SCALE, SKILL_XP_SCALE } from "./data";
 import {
   GIGS,
   MAX_SKILL_LEVEL,
@@ -264,10 +264,12 @@ export function resolveShift(state: GameState, moments: ShiftMoment[]): ShiftRes
   const reputation = Math.round((2 + score * 6 + level.tier) * perks.reputationMult);
   const performanceGain = score * 12 * perks.performanceMult;
 
-  // Skill XP accrues to whichever skills the shift exercised.
+  // Skill XP accrues to whichever skills the shift exercised. Kept modest (and
+  // quality-weighted) versus the paid Train action so working a job nudges
+  // skills up without trivializing deliberate training. Tune via SKILL_XP_SCALE.
   const skillXp: Record<string, number> = {};
   for (const m of moments) {
-    const gain = (6 + qualityWeight(m.quality) * 10) * perks.skillXpMult;
+    const gain = (2 + qualityWeight(m.quality) * 8) * perks.skillXpMult * SKILL_XP_SCALE;
     skillXp[m.skillId] = (skillXp[m.skillId] ?? 0) + gain;
   }
 

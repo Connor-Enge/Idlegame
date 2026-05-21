@@ -28,6 +28,7 @@ export const SALARY_SCALE = 0.2; // passive salary while employed
 export const RENT_SCALE = 0.25; // net rent from property
 export const BIZ_PROFIT_SCALE = 0.12; // net business profit per tick
 export const SHIFT_GIG_SCALE = 0.25; // active shift / gig lump-sum payouts
+export const SKILL_XP_SCALE = 0.4; // skill XP earned passively from working shifts
 
 // Net-worth thresholds that permanently unlock each system, in order. These
 // gates pace access: the wealth engines (business, real estate) sit high
