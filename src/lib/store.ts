@@ -86,6 +86,7 @@ interface GameStore {
   dismissOffline: () => void;
   dismissAchievement: () => void;
   applyAuth: (account: Account | null) => Promise<void>;
+  resetGame: () => Promise<void>;
 }
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -178,6 +179,17 @@ export const useGame = create<GameStore>((set, get) => ({
   setToast: (msg) => set({ toast: msg }),
   dismissOffline: () => set({ offlineReport: null }),
   dismissAchievement: () => set({ recentAchievement: null }),
+
+  // Hard reset: wipe all progress (including prestige) back to a fresh start,
+  // keeping the same player/account id so the server save is overwritten.
+  // Distinct from retire(), which keeps Legacy Points.
+  resetGame: async () => {
+    const playerId = get().state?.playerId ?? getStoredPlayerId();
+    const fresh = createInitialState(playerId);
+    set({ state: fresh, offlineReport: null, recentAchievement: null, lastGamble: null, toast: "Progress reset" });
+    persistLocal(fresh);
+    await get().save();
+  },
 
   // Reconcile local play with a logged-in account (or reset on logout).
   applyAuth: async (account) => {

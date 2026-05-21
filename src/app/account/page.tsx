@@ -8,11 +8,22 @@ import { Button, Card, SectionTitle } from "@/components/ui";
 export default function AccountPage() {
   const account = useGame((s) => s.account);
   const applyAuth = useGame((s) => s.applyAuth);
+  const resetGame = useGame((s) => s.resetGame);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  async function doReset() {
+    if (!confirm("Reset ALL progress to a fresh start? This wipes cash, career, assets, businesses, achievements and prestige. This cannot be undone.")) return;
+    setBusy(true);
+    try {
+      await resetGame();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     setError(null);
@@ -113,6 +124,19 @@ export default function AccountPage() {
           </p>
         </Card>
       )}
+
+      {/* Danger zone — hard reset for fresh starts, updates and dev testing */}
+      <Card className="border-danger/30">
+        <div className="font-semibold text-danger">Danger zone</div>
+        <p className="mt-1 text-[11px] text-muted">
+          Reset all progress to a brand-new game — cash, career, investments, real estate,
+          businesses, achievements and prestige. Useful after big updates or for testing. This
+          cannot be undone.
+        </p>
+        <Button variant="danger" className="mt-3 w-full" disabled={busy} onClick={doReset}>
+          Reset all progress
+        </Button>
+      </Card>
 
       <Link href="/" className="block text-center text-xs text-muted underline">
         Back to game
