@@ -71,6 +71,25 @@ export interface Progression {
   unlocks: FeatureFlag[]; // sticky feature unlocks
   legacyPoints: number; // permanent prestige currency
   retirements: number;
+  achievements: string[]; // unlocked achievement ids
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  tier: "bronze" | "silver" | "gold" | "legendary";
+  check: (state: GameState) => boolean;
+  reward?: { cash?: number; luck?: number; legacy?: number };
+}
+
+export interface OfflineReport {
+  ticks: number;
+  cash: number;
+  netWorth: number;
+  xp: number;
+  levels: number;
 }
 
 export interface PlayerCareer {

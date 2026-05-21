@@ -33,6 +33,15 @@ async function run(): Promise<void> {
       "created_at" timestamp with time zone DEFAULT now() NOT NULL
     )
   `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "users" (
+      "id" text PRIMARY KEY NOT NULL,
+      "email" text NOT NULL UNIQUE,
+      "password_hash" text NOT NULL,
+      "salt" text NOT NULL,
+      "created_at" timestamp with time zone DEFAULT now() NOT NULL
+    )
+  `);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "players_net_worth_idx" ON "players" USING btree ("net_worth")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "events_player_idx" ON "events" USING btree ("player_id")`);
 }

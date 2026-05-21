@@ -44,6 +44,7 @@ export function normalizeState(s: GameState): GameState {
   if (p.studyTicksRemaining == null) p.studyTicksRemaining = 0;
   if (p.legacyPoints == null) p.legacyPoints = 0;
   if (p.retirements == null) p.retirements = 0;
+  if (p.achievements == null) p.achievements = [];
   if (p.level == null || p.level < 1) p.level = 1;
   if (p.xp == null) p.xp = 0;
 

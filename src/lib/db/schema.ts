@@ -45,5 +45,16 @@ export const events = pgTable(
   }),
 );
 
+// Registered accounts. A user's id doubles as their player save id, so a
+// player row keyed by the same id holds their game state.
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  salt: text("salt").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type PlayerRow = typeof players.$inferSelect;
 export type NewPlayerRow = typeof players.$inferInsert;
+export type UserRow = typeof users.$inferSelect;

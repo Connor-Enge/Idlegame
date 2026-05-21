@@ -25,6 +25,7 @@ export function defaultProgression(): Progression {
     unlocks: [],
     legacyPoints: 0,
     retirements: 0,
+    achievements: [],
   };
 }
 

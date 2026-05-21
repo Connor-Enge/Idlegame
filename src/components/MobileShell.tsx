@@ -5,6 +5,8 @@ import { useGame } from "@/lib/store";
 import StatBar from "./StatBar";
 import BottomNav from "./BottomNav";
 import Toast from "./Toast";
+import OfflineModal from "./OfflineModal";
+import AchievementPopup from "./AchievementPopup";
 
 export default function MobileShell({ children }: { children: React.ReactNode }) {
   const init = useGame((s) => s.init);
@@ -21,6 +23,8 @@ export default function MobileShell({ children }: { children: React.ReactNode })
         {state ? children : <Loading />}
       </main>
       <Toast />
+      <AchievementPopup />
+      <OfflineModal />
       <BottomNav />
     </>
   );

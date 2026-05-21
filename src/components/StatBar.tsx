@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGame } from "@/lib/store";
 import { money } from "@/lib/format";
 import { macroSummary } from "@/lib/game/economy";
@@ -7,6 +8,7 @@ import { xpToNext } from "@/lib/game/progression";
 
 export default function StatBar() {
   const state = useGame((s) => s.state);
+  const account = useGame((s) => s.account);
   if (!state) return <header className="h-16" />;
 
   const { stats, economy, progression } = state;
@@ -20,9 +22,18 @@ export default function StatBar() {
           <div className="text-[10px] uppercase tracking-widest text-muted">Cash</div>
           <div className="text-2xl font-bold text-accent">{money(stats.cash)}</div>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-widest text-muted">Net Worth</div>
-          <div className="text-lg font-semibold text-accent-2">{money(stats.netWorth)}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-widest text-muted">Net Worth</div>
+            <div className="text-lg font-semibold text-accent-2">{money(stats.netWorth)}</div>
+          </div>
+          <Link
+            href="/account"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base active:bg-white/20"
+            title={account ? account.email : "Sign in"}
+          >
+            {account ? "👤" : "🔓"}
+          </Link>
         </div>
       </div>
 

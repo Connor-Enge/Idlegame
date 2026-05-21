@@ -81,11 +81,19 @@ npm run dev                 # http://localhost:3000
 > The Vercel ↔ GitHub ↔ Neon wiring requires your own accounts and cannot be
 > provisioned from this repo alone. The steps above are the full checklist.
 
+## Accounts
+
+Email + password accounts (no third-party provider needed) let a save follow a
+player across devices. Sessions are signed cookies (HMAC via Web Crypto);
+passwords are PBKDF2-hashed. Set `AUTH_SECRET` in the environment for secure,
+stable sessions — in Vercel, add it under Settings → Environment Variables.
+Anonymous play still works without an account (saved per-browser); registering
+claims that progress.
+
 ## Roadmap / next steps
 
-- Real authentication (NextAuth) to replace the anonymous `localStorage` player id.
+- OAuth providers (Google/Apple) on top of the email/password base.
 - Server-authoritative ticks (cron) so progress can't be edited client-side.
 - Leaderboard UI + activity feed (the `events` table is already scaffolded).
 - Blackjack and live multiplayer tables.
-- Prestige / ascension layer and achievements.
 - Store money as integer cents (or bigint) before any real balance matters.
