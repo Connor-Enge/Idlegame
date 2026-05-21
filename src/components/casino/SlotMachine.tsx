@@ -124,6 +124,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setLocksOpen(false);
     setGamble(null);
 
+    try {
     const result = o.preset ?? game.spin(wager, state.stats.luck, { buy, rows });
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
@@ -200,7 +201,6 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     const tier = winTier(result.totalMult);
     if (result.note) showFeature(result.note);
     setDone({ win: payout, mult: result.totalMult, tier });
-    setSpinning(false);
 
     // Interactive follow-ups (Book of Shadows). FS rounds skip Lucky Locks.
     const isFS = result.frames.length > 1;
@@ -209,6 +209,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
       setLockedCols(new Set());
     }
     if (game.gamble && payout > 0) setGamble({ amount: payout, tries: 0 });
+    } finally {
+      setSpinning(false);
+    }
   }
 
   function toggleLock(c: number) {
@@ -460,35 +463,42 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
           </div>
         )}
 
-        {/* Lucky Locks (Book of Shadows) — lock reels, pay to respin the rest. */}
+        {/* Lucky Locks (Book of Shadows): tap reels to hold; the main button
+            becomes RESPIN of the unlocked reels at the shown cost. */}
         {locksOpen && !spinning && (
-          <div className="rounded-xl border p-2" style={{ borderColor: theme.accent, background: `${theme.accent}11` }}>
-            <div className="mb-1.5 text-center text-[11px] font-semibold" style={{ color: theme.accent }}>
-              🔒 LUCKY LOCKS — tap reels to hold ({lockedCols.size} held), then respin the rest
-            </div>
-            <button
-              onClick={doRespin}
-              disabled={lockedCols.size === 0 || lockCost * wager > cash}
-              className="w-full rounded-lg py-2.5 text-sm font-black disabled:opacity-40"
-              style={{ background: theme.accent, color: theme.accentText }}
-            >
-              {lockedCols.size === 0
-                ? "Tap reels to hold"
-                : lockCost * wager > cash
-                  ? `Respin needs ${money(lockCost * wager)}`
-                  : `RESPIN · ${money(lockCost * wager)} (${lockCost}×)`}
-            </button>
+          <div className="rounded-lg px-2 py-1 text-center text-[11px] font-semibold" style={{ color: theme.accent, background: `${theme.accent}11` }}>
+            🔒 LUCKY LOCKS — tap reels to hold {lockedCols.size > 0 ? `(${lockedCols.size} held)` : "then respin the rest"}
           </div>
         )}
 
-        <button
-          onClick={() => spin({ buy: false })}
-          disabled={spinning || wager * rowMult > cash || wager <= 0}
-          className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
-          style={{ background: theme.accent, color: theme.accentText }}
-        >
-          {spinning ? "Spinning…" : locksOpen ? `NEW SPIN · ${money(wager * rowMult)}` : `SPIN · ${money(wager * rowMult)}`}
-        </button>
+        {locksOpen && lockedCols.size > 0 && !spinning ? (
+          <button
+            onClick={doRespin}
+            disabled={lockCost * wager > cash}
+            className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
+            style={{ background: theme.accent, color: theme.accentText }}
+          >
+            {lockCost * wager > cash ? `RESPIN needs ${money(lockCost * wager)}` : `RESPIN held · ${money(lockCost * wager)} (${lockCost}×)`}
+          </button>
+        ) : (
+          <button
+            onClick={() => spin({ buy: false })}
+            disabled={spinning || wager * rowMult > cash || wager <= 0}
+            className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
+            style={{ background: theme.accent, color: theme.accentText }}
+          >
+            {spinning ? "Spinning…" : `SPIN · ${money(wager * rowMult)}`}
+          </button>
+        )}
+        {locksOpen && lockedCols.size > 0 && !spinning && (
+          <button
+            onClick={() => spin({ buy: false })}
+            disabled={wager * rowMult > cash}
+            className="w-full rounded-lg py-1.5 text-xs font-semibold text-white/70"
+          >
+            or spin fresh · {money(wager * rowMult)}
+          </button>
+        )}
         {game.buyCost && (
           <button
             onClick={() => spin({ buy: true })}
