@@ -172,20 +172,22 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // long-run return-to-player sits around ~90% (house edge ~10%). Tuned against
 // a Monte-Carlo probe; adjust here to retune without touching paytables.
 const CAL: Record<string, number> = {
-  scatter: 0.024,
-  megaways: 0.097,
-  cluster: 3.2,
-  holdwin: 0.9,
-  cascade: 0.085,
-  book: 0.35,
-  jackpot: 0.081,
-  ways243: 0.73,
-  video: 0.42,
-  classic: 2.4,
+  scatter: 0.0094,
+  megaways: 0.0086,
+  cluster: 3.22,
+  holdwin: 1.01,
+  cascade: 0.0874,
+  book: 0.181,
+  jackpot: 0.09,
+  ways243: 0.099,
+  video: 0.234,
+  classic: 0.8,
 };
 
+const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
+
 // ---------------------------------------------------------------------------
-// 1. Classic 3-reel — single payline, fruit machine.
+// 1. Classic 3-reel — single payline; cherries pay even 1-2 of a kind.
 // ---------------------------------------------------------------------------
 const classic: SlotGame = (() => {
   const syms = ["🍒", "🍋", "🍊", "🔔", "⭐", "💰", "7️⃣"];
@@ -196,7 +198,7 @@ const classic: SlotGame = (() => {
     name: "Lucky Sevens",
     style: "Classic 3-Reel",
     icon: "🍒",
-    blurb: "One payline. Pure nostalgia.",
+    blurb: "One payline. Cherries pay anywhere.",
     symbols: syms,
     cols: 3,
     spin: () => {
@@ -204,25 +206,28 @@ const classic: SlotGame = (() => {
       const row = [grid[0][0], grid[1][0], grid[2][0]];
       let mult = 0;
       const hl: string[] = [];
+      const cherries = row.filter((s) => s === "🍒").length;
       if (row[0] === row[1] && row[1] === row[2]) {
-        mult = pay3[row[0]] * CAL.classic;
+        mult = pay3[row[0]];
         hl.push(key(0, 0), key(1, 0), key(2, 0));
-      } else if (row[0] === "🍒" && row[1] === "🍒") {
-        mult = 2 * CAL.classic;
-        hl.push(key(0, 0), key(1, 0));
+      } else if (cherries >= 1) {
+        mult = cherries >= 2 ? 3 : 1; // classic cherry pays
+        for (let c = 0; c < 3; c++) if (row[c] === "🍒") hl.push(key(c, 0));
       }
-      return { frames: [{ grid, highlights: hl, win: mult }], totalMult: cap(mult) };
+      const m = mult * CAL.classic;
+      return { frames: [{ grid, highlights: hl, win: m }], totalMult: cap(m) };
     },
   };
 })();
 
 // ---------------------------------------------------------------------------
-// 2. 5x3 video slot — 20 paylines with wilds.
+// 2. 5x3 video slot — 20 paylines, wilds, scatter → 10 free spins (wins ×3).
 // ---------------------------------------------------------------------------
 const video: SlotGame = (() => {
   const W = "🃏";
-  const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", W];
-  const weights = [26, 22, 16, 12, 8, 5, 6];
+  const SC = "🎁";
+  const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", W, SC];
+  const weights = [25, 21, 16, 12, 8, 5, 6, 5];
   const table: Record<string, [number, number, number]> = {
     "🍇": [0.4, 1, 3],
     "🍉": [0.5, 1.5, 4],
@@ -246,23 +251,38 @@ const video: SlotGame = (() => {
     name: "Royal Riches",
     style: "20-Line Video",
     icon: "👑",
-    blurb: "20 paylines, wild jokers.",
+    blurb: "20 lines, wilds, 3 🎁 = free spins.",
     symbols: syms,
     cols: 5,
     spin: () => {
+      const frames: Frame[] = [];
+      let total = 0;
       const grid = genGrid(5, 3, syms, weights);
-      const { mult, highlights } = evalLines(grid, L, pay, W);
-      return { frames: [{ grid, highlights, win: mult }], totalMult: cap(mult) };
+      const base = evalLines(grid, L, pay, W, SC);
+      total += base.mult;
+      const scat = countSym(grid, SC);
+      frames.push({ grid, highlights: base.highlights, win: base.mult, label: scat >= 3 ? "3 🎁 — 10 Free Spins!" : undefined });
+      if (scat >= 3) {
+        for (let i = 1; i <= 10; i++) {
+          const fg = genGrid(5, 3, syms, weights);
+          const r = evalLines(fg, L, pay, W, SC);
+          const w = r.mult * 3; // free-spin win multiplier
+          total += w;
+          frames.push({ grid: fg, highlights: r.highlights, win: w, label: `Free spin ${i}/10 · ×3` });
+        }
+      }
+      return { frames, totalMult: cap(total) };
     },
   };
 })();
 
 // ---------------------------------------------------------------------------
-// 3. 243 Ways to win — 5x3 adjacent-reel matching.
+// 3. 243 Ways — adjacent reels; 3 scatters → 8 free spins (wins ×2).
 // ---------------------------------------------------------------------------
 const ways243: SlotGame = (() => {
-  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", "🌙"];
-  const weights = [26, 22, 17, 12, 7, 16];
+  const SC = "🌙";
+  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", SC];
+  const weights = [26, 22, 17, 12, 7, 14];
   const table: Record<string, [number, number, number]> = {
     "🦊": [0.2, 0.6, 1.5],
     "🐺": [0.3, 0.8, 2],
@@ -276,19 +296,33 @@ const ways243: SlotGame = (() => {
     name: "Wild Spirits",
     style: "243 Ways",
     icon: "🐉",
-    blurb: "No lines — 243 ways to win.",
+    blurb: "243 ways; 3 🌙 = free spins.",
     symbols: syms,
     cols: 5,
     spin: () => {
+      const frames: Frame[] = [];
+      let total = 0;
       const grid = genGrid(5, 3, syms, weights);
-      const { mult, highlights } = evalWays(grid, pay, { scatter: "🌙" });
-      return { frames: [{ grid, highlights, win: mult }], totalMult: cap(mult), ways: 243 };
+      const base = evalWays(grid, pay, { scatter: SC });
+      total += base.mult;
+      const scat = countSym(grid, SC);
+      frames.push({ grid, highlights: base.highlights, win: base.mult, label: scat >= 3 ? "3 🌙 — 8 Free Spins!" : undefined, });
+      if (scat >= 3) {
+        for (let i = 1; i <= 8; i++) {
+          const fg = genGrid(5, 3, syms, weights);
+          const r = evalWays(fg, pay, { scatter: SC });
+          const w = r.mult * 2;
+          total += w;
+          frames.push({ grid: fg, highlights: r.highlights, win: w, label: `Free spin ${i}/8 · ×2` });
+        }
+      }
+      return { frames, totalMult: cap(total), ways: 243 };
     },
   };
 })();
 
 // ---------------------------------------------------------------------------
-// 4. Megaways — 6 reels, 2-7 symbols each, up to 117,649 ways.
+// 4. Megaways — 6 variable reels AND cascading wins with a rising multiplier.
 // ---------------------------------------------------------------------------
 const megaways: SlotGame = (() => {
   const syms = ["💠", "🟦", "🟩", "🟧", "🔺", "💎", "🏆"];
@@ -308,13 +342,30 @@ const megaways: SlotGame = (() => {
     name: "Mega Fortune X",
     style: "Megaways",
     icon: "💠",
-    blurb: "Up to 117,649 ways every spin.",
+    blurb: "Up to 117,649 ways; wins cascade.",
     symbols: syms,
     cols: 6,
     spin: () => {
-      const grid = genVariableGrid(6, 2, 7, syms, weights);
-      const { mult, highlights } = evalWays(grid, pay, {});
-      return { frames: [{ grid, highlights, win: mult }], totalMult: cap(mult), ways: countWays(grid) };
+      let grid = genVariableGrid(6, 2, 7, syms, weights);
+      const ways = countWays(grid);
+      const frames: Frame[] = [];
+      let total = 0;
+      let mult = 1;
+      let step = 0;
+      while (step < 12) {
+        const { mult: m, highlights } = evalWays(grid, pay, {});
+        if (m <= 0 || highlights.length === 0) {
+          if (step === 0) frames.push({ grid, win: 0 });
+          break;
+        }
+        const w = m * mult;
+        total += w;
+        frames.push({ grid, highlights, win: w, label: step > 0 ? `Cascade ×${mult}` : undefined });
+        grid = tumble(grid, new Set(highlights), syms, weights);
+        mult++;
+        step++;
+      }
+      return { frames, totalMult: cap(total), ways };
     },
   };
 })();
@@ -326,7 +377,7 @@ const cluster: SlotGame = (() => {
   const syms = ["🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "⬜"];
   const weights = [16, 16, 16, 15, 14, 12, 8];
   const pay = (_s: Sym, size: number) => {
-    let m = 0.4; // 5-6
+    let m = 0.4;
     if (size >= 15) m = 25;
     else if (size >= 12) m = 10;
     else if (size >= 9) m = 4;
@@ -352,7 +403,7 @@ const cluster: SlotGame = (() => {
           if (chain === 0) frames.push({ grid, win: 0 });
           break;
         }
-        const m = mult * (1 + chain * 0.5); // rising cascade multiplier
+        const m = mult * (1 + chain * 0.5);
         total += m;
         frames.push({ grid, highlights, win: m, label: chain > 0 ? `Cascade ×${(1 + chain * 0.5).toFixed(1)}` : undefined });
         grid = tumble(grid, new Set(highlights), syms, weights);
@@ -409,62 +460,79 @@ const cascade: SlotGame = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// 7. Scatter / pay-anywhere — 6x5, pay on 8+, tumble, multiplier bombs.
+// 7. Pay-anywhere (Sweet-Bonanza style) — 6x5, 8+ pays, tumble, ✖️ bombs
+//    accumulate and multiply the sequence; 4 🍭 scatters → 10 free spins.
 // ---------------------------------------------------------------------------
 const scatterPays: SlotGame = (() => {
-  const M = "✖️";
-  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", "🍭", M];
-  const weights = [22, 20, 16, 13, 10, 8, 4];
-  const table: Record<string, (n: number) => number> = {};
+  const BOMB = "✖️";
+  const SC = "🍭";
+  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BOMB, SC];
+  const weights = [22, 20, 16, 13, 10, 5, 5];
   const base: Record<string, [number, number, number]> = {
     "🍌": [0.25, 0.75, 2],
     "🍎": [0.4, 1.2, 3],
     "🍓": [0.5, 2, 5],
     "🍑": [0.8, 3, 8],
     "🫐": [1.2, 5, 12],
-    "🍭": [2, 10, 25],
   };
-  for (const s of Object.keys(base)) {
-    table[s] = (n: number) => {
-      const t = base[s];
-      if (n >= 12) return t[2];
-      if (n >= 10) return t[1];
-      return t[0]; // 8-9
-    };
-  }
-  const pay = (s: Sym, n: number) => (table[s] ? table[s](n) * CAL.scatter : 0);
+  const pay = (s: Sym, n: number) => {
+    const t = base[s];
+    if (!t) return 0;
+    const v = n >= 12 ? t[2] : n >= 10 ? t[1] : t[0];
+    return v * CAL.scatter;
+  };
+  // One tumble sequence: pays 8+ anywhere, tumbles, then accumulated ✖️ bombs
+  // multiply the sequence total (Sweet-Bonanza mechanic).
+  const playSeq = (g0: Sym[][]) => {
+    const fr: Frame[] = [];
+    let tot = 0;
+    let grid = g0;
+    let step = 0;
+    while (step < 10) {
+      const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC]);
+      if (mult <= 0) break;
+      tot += mult;
+      fr.push({ grid: grid.map((c) => [...c]), highlights, win: mult });
+      grid = tumble(grid, new Set(highlights), syms, weights);
+      step++;
+    }
+    let bombSum = 0;
+    for (const col of grid) for (const s of col) if (s === BOMB) bombSum += 2 + Math.floor(Math.random() * 8);
+    if (tot > 0 && bombSum > 0) {
+      const before = tot;
+      tot *= bombSum;
+      if (fr.length) {
+        const last = fr[fr.length - 1];
+        fr[fr.length - 1] = { ...last, label: `×${bombSum} bombs!`, win: (last.win ?? 0) + (tot - before) };
+      }
+    }
+    return { frames: fr, win: tot, grid };
+  };
   return {
     id: "scatter",
     name: "Fruit Frenzy",
     style: "Pay Anywhere",
     icon: "🍓",
-    blurb: "8+ anywhere pays. Tumbles + ✖️ bombs.",
+    blurb: "8+ anywhere; ✖️ bombs; 4 🍭 = free spins.",
     symbols: syms,
     cols: 6,
     spin: () => {
-      let grid = genGrid(6, 5, syms, weights);
       const frames: Frame[] = [];
       let total = 0;
-      let step = 0;
-      while (step < 8) {
-        const { mult, highlights } = evalScatterPays(grid, pay, 8, [M]);
-        if (mult <= 0) {
-          if (step === 0) frames.push({ grid, win: 0 });
-          break;
-        }
-        total += mult;
-        frames.push({ grid, highlights, win: mult });
-        grid = tumble(grid, new Set(highlights), syms, weights);
-        step++;
-      }
-      // After tumbles, ✖️ multiplier bombs on the board multiply the win.
-      if (total > 0) {
-        let bomb = 0;
-        for (const col of grid) for (const s of col) if (s === M) bomb += 2 + Math.floor(Math.random() * 8);
-        if (bomb > 0) {
-          const before = total;
-          total *= bomb;
-          frames.push({ grid, label: `×${bomb} multiplier!`, win: total - before });
+      const grid = genGrid(6, 5, syms, weights);
+      const scat = countSym(grid, SC);
+      const baseSeq = playSeq(grid);
+      total += baseSeq.win;
+      if (baseSeq.frames.length) frames.push(...baseSeq.frames);
+      else frames.push({ grid, win: 0 });
+      if (scat >= 4) {
+        frames.push({ grid: baseSeq.grid, win: 0, label: "4 🍭 — 10 Free Spins!" });
+        for (let i = 1; i <= 10; i++) {
+          const fg = genGrid(6, 5, syms, weights);
+          const fs = playSeq(fg);
+          total += fs.win;
+          const out = fs.frames.length ? fs.frames : [{ grid: fg, win: 0 }];
+          out.forEach((fr) => frames.push({ ...fr, label: fr.label ? `FS ${i}/10 · ${fr.label}` : `Free spin ${i}/10` }));
         }
       }
       return { frames, totalMult: cap(total) };
@@ -498,11 +566,9 @@ const holdwin: SlotGame = (() => {
     blurb: "Collect 6+ coins to trigger respins.",
     symbols: syms,
     cols: COLS,
-    spin: (bet) => {
-      // Base spin.
+    spin: () => {
       const grid = genGrid(COLS, ROWS, syms, weights);
       const frames: Frame[] = [];
-      // Count coins; assign values.
       const coinVals = new Map<string, number>();
       const hl: string[] = [];
       for (let c = 0; c < COLS; c++)
@@ -512,15 +578,11 @@ const holdwin: SlotGame = (() => {
             hl.push(key(c, r));
           }
       frames.push({ grid, highlights: hl, label: `${coinVals.size} coins` });
+      if (coinVals.size < 6) return { frames, totalMult: 0 };
 
-      if (coinVals.size < 6) {
-        return { frames, totalMult: 0 };
-      }
-
-      // Trigger Hold & Win: lock coins, 3 respins reset on each new coin.
       let respins = 3;
       const locked = new Map<string, number>(coinVals);
-      let board = grid.map((col, c) => col.map((_, r) => (locked.has(key(c, r)) ? C : blank)));
+      const board = grid.map((col, c) => col.map((_, r) => (locked.has(key(c, r)) ? C : blank)));
       while (respins > 0 && locked.size < CELLS) {
         respins--;
         let newCoin = false;
@@ -528,7 +590,6 @@ const holdwin: SlotGame = (() => {
           for (let r = 0; r < ROWS; r++) {
             const k = key(c, r);
             if (locked.has(k)) continue;
-            // Small chance each empty cell lands a coin on a respin.
             if (Math.random() < 0.16) {
               locked.set(k, coinValue());
               board[c][r] = C;
@@ -552,7 +613,8 @@ const holdwin: SlotGame = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// 9. Expanding-wild "book" — 5x3, 10 lines, 3 books = 8 free spins.
+// 9. Expanding-wild book — 5x3, 3 books → 10 free spins with a chosen
+//    special symbol that expands to fill its reel and pays scattered; retrigger.
 // ---------------------------------------------------------------------------
 const book: SlotGame = (() => {
   const B = "📖";
@@ -572,51 +634,50 @@ const book: SlotGame = (() => {
     [2, 2, 1, 2, 2], [1, 0, 1, 2, 1], [1, 2, 1, 0, 1], [0, 1, 1, 1, 2],
   ];
   const pay = (s: Sym, c: number) => (table[s] ? (table[s][c - 3] ?? 0) * CAL.book : 0);
-  const countBooks = (g: Sym[][]) => g.reduce((a, col) => a + col.filter((s) => s === B).length, 0);
   return {
     id: "book",
     name: "Book of Fortune",
     style: "Expanding Wild",
     icon: "📖",
-    blurb: "3 books trigger 8 free spins with an expanding symbol.",
+    blurb: "3 books = 10 free spins with an expanding symbol.",
     symbols: syms,
     cols: 5,
     spin: () => {
-      const grid = genGrid(5, 3, syms, weights);
       const frames: Frame[] = [];
       let total = 0;
-      const base = evalLines(grid, L, pay, undefined, B);
-      total += base.mult;
-      frames.push({ grid, highlights: base.highlights, win: base.mult, label: countBooks(grid) >= 3 ? "3 books — Free Spins!" : undefined });
-
-      if (countBooks(grid) >= 3) {
-        // Choose one special expanding symbol for the feature.
+      const grid = genGrid(5, 3, syms, weights);
+      const baseLines = evalLines(grid, L, pay, undefined, B);
+      total += baseLines.mult;
+      const books = countSym(grid, B);
+      frames.push({ grid, highlights: baseLines.highlights, win: baseLines.mult, label: books >= 3 ? "3 📖 — 10 Free Spins!" : undefined });
+      if (books >= 3) {
         const pool = ["🐍", "🐫", "🪲", "𓂀", "🏺", "👑"];
         const special = pool[Math.floor(Math.random() * pool.length)];
-        for (let fs = 1; fs <= 8; fs++) {
+        let fsLeft = 10;
+        let i = 0;
+        while (fsLeft > 0 && i < 40) {
+          fsLeft--;
+          i++;
           const fg = genGrid(5, 3, syms, weights);
-          // Any reel containing the special symbol expands to fill that reel.
           const hl: string[] = [];
-          let expanded = false;
+          // Expand the special symbol to fill any reel it lands on.
           for (let c = 0; c < 5; c++) {
             if (fg[c].includes(special)) {
               for (let r = 0; r < 3; r++) {
                 fg[c][r] = special;
                 hl.push(key(c, r));
               }
-              expanded = true;
             }
           }
           let win = 0;
-          if (expanded) {
-            // Expanded symbol pays on all lines that run through expanded reels.
-            const reelsHit = fg.filter((col) => col.every((s) => s === special)).length;
-            if (reelsHit >= 3) win += pay(special, Math.min(5, reelsHit)) * 3;
-          }
+          const reelsWith = fg.filter((col) => col.every((s) => s === special)).length;
+          if (reelsWith >= 3) win += pay(special, Math.min(5, reelsWith)) * 3; // pays on all rows
           const lines = evalLines(fg, L, pay, undefined, B);
           win += lines.mult;
           total += win;
-          frames.push({ grid: fg, highlights: [...new Set([...hl, ...lines.highlights])], win, label: `Free spin ${fs}/8 · ${special}` });
+          const more = countSym(fg, B);
+          if (more >= 3) fsLeft += 10; // retrigger
+          frames.push({ grid: fg, highlights: [...new Set([...hl, ...lines.highlights])], win, label: `Free spin ${i} · ${special}${more >= 3 ? " · +10!" : ""}` });
         }
       }
       return { frames, totalMult: cap(total) };
@@ -644,7 +705,6 @@ const jackpot: SlotGame = (() => {
     [1, 2, 1, 0, 1], [0, 0, 1, 2, 2], [2, 2, 1, 0, 0], [0, 1, 0, 1, 0],
   ];
   const pay = (s: Sym, c: number) => (table[s] ? (table[s][c - 3] ?? 0) * CAL.jackpot : 0);
-  // Pots grow over the session for flavor; trigger pays a fixed multiple.
   const POTS = { Mini: 20 * CAL.jackpot, Minor: 100 * CAL.jackpot, Major: 1000 * CAL.jackpot, Grand: 10000 * CAL.jackpot };
   return {
     id: "jackpot",
@@ -669,7 +729,7 @@ const jackpot: SlotGame = (() => {
         else if (jCells.length === 5) tier = "Major";
         else if (jCells.length === 4) tier = "Minor";
         total += POTS[tier];
-        note = `${tier} Jackpot! +${POTS[tier]}×`;
+        note = `${tier} Jackpot!`;
         frames.push({ grid, highlights: jCells, win: POTS[tier], label: note });
       }
       return { frames, totalMult: cap(total), note };
