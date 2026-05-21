@@ -13,6 +13,7 @@ import {
   getSkillLevel,
   getSkillXp,
   gigAvailable,
+  passiveSalaryPerTick,
   perkBundle,
   projectById,
   raiseChance,
@@ -187,7 +188,7 @@ function JobCard({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <Info label="Salary / tick" value={money(level.baseSalaryPerTick * career.salaryMultiplier)} />
+        <Info label="Salary / tick" value={money(passiveSalaryPerTick(state))} />
         <Info label="Energy / shift" value={`${energyCost}⚡`} />
         <Info label="Shifts here" value={`${career.shiftsWorked}`} />
         <Info label="Streak" value={`🔥 ${career.shiftStreak}`} />

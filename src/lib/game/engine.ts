@@ -2,12 +2,10 @@ import {
   BASE_ASSETS,
   BIZ_PROFIT_SCALE,
   BUSINESS_TYPES,
-  CAREER_TRACKS,
   PROPERTIES,
   RENT_SCALE,
-  SALARY_SCALE,
 } from "./data";
-import { freshCareer, normalizeCareer, perkBundle } from "./career";
+import { freshCareer, normalizeCareer, passiveSalaryPerTick } from "./career";
 import { initialEconomy, stepAsset, stepEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
 import {
@@ -169,20 +167,8 @@ function stepOnce(s: GameState): GameState {
 
   // 2. Salary (passive while employed). Raises, morale and perks all scale it.
   if (s.career.trackId) {
-    const track = CAREER_TRACKS.find((t) => t.id === s.career.trackId);
-    const level = track?.levels[s.career.levelIndex];
-    if (level) {
-      const perks = perkBundle(s);
-      const macroMult = 1 + s.economy.gdpGrowth;
-      const moraleFactor = 0.7 + (s.career.morale / 100) * 0.5;
-      const salary =
-        level.baseSalaryPerTick *
-        macroMult *
-        mult *
-        s.career.salaryMultiplier *
-        moraleFactor *
-        perks.passiveSalaryMult *
-        SALARY_SCALE;
+    const salary = passiveSalaryPerTick(s);
+    if (salary > 0) {
       income += salary;
       s.career.totalEarned += salary;
       s.stats.reputation += 0.2;

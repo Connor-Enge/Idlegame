@@ -1,4 +1,4 @@
-import { CAREER_TRACKS, SHIFT_GIG_SCALE } from "./data";
+import { CAREER_TRACKS, SALARY_SCALE, SHIFT_GIG_SCALE } from "./data";
 import {
   GIGS,
   MAX_SKILL_LEVEL,
@@ -152,6 +152,26 @@ export function trackById(id: string | null): CareerTrack | undefined {
 export function currentLevel(state: GameState): JobLevel | undefined {
   const track = trackById(state.career.trackId);
   return track?.levels[state.career.levelIndex];
+}
+
+// Passive salary credited per tick while employed. Mirrors the engine exactly
+// (macro, income mult, raises, morale, perks, global SALARY_SCALE) so the UI
+// shows what's actually earned rather than the raw base rate.
+export function passiveSalaryPerTick(state: GameState): number {
+  const level = currentLevel(state);
+  if (!level || !state.career.trackId) return 0;
+  const perks = perkBundle(state);
+  const macroMult = 1 + state.economy.gdpGrowth;
+  const moraleFactor = 0.7 + (state.career.morale / 100) * 0.5;
+  return (
+    level.baseSalaryPerTick *
+    macroMult *
+    incomeMultiplier(state.progression) *
+    state.career.salaryMultiplier *
+    moraleFactor *
+    perks.passiveSalaryMult *
+    SALARY_SCALE
+  );
 }
 
 export function tasksForTrack(trackId: string): ShiftTask[] {
