@@ -173,7 +173,7 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // a Monte-Carlo probe; adjust here to retune without touching paytables.
 const CAL: Record<string, number> = {
   scatter: 0.0094,
-  megaways: 0.0086,
+  megaways: 0.0224,
   cluster: 3.22,
   holdwin: 1.01,
   cascade: 0.0874,
@@ -325,8 +325,9 @@ const ways243: SlotGame = (() => {
 // 4. Megaways — 6 variable reels AND cascading wins with a rising multiplier.
 // ---------------------------------------------------------------------------
 const megaways: SlotGame = (() => {
-  const syms = ["💠", "🟦", "🟩", "🟧", "🔺", "💎", "🏆"];
-  const weights = [24, 22, 18, 14, 10, 7, 5];
+  const SC = "💫"; // scatter — does not pay, triggers free spins
+  const syms = ["💠", "🟦", "🟩", "🟧", "🔺", "💎", "🏆", SC];
+  const weights = [24, 22, 18, 14, 10, 7, 5, 2];
   const table: Record<string, [number, number, number, number]> = {
     "💠": [0.1, 0.3, 0.8, 2],
     "🟦": [0.15, 0.4, 1, 2.5],
@@ -337,33 +338,61 @@ const megaways: SlotGame = (() => {
     "🏆": [2, 8, 25, 80],
   };
   const pay = (s: Sym, reels: number) => (table[s] ? (table[s][Math.min(3, reels - 3)] ?? 0) * CAL.megaways : 0);
+  const newGrid = () => genVariableGrid(6, 2, 7, syms, weights);
+
   return {
     id: "megaways",
     name: "Mega Fortune X",
     style: "Megaways",
     icon: "💠",
-    blurb: "Up to 117,649 ways; wins cascade.",
+    blurb: "117,649 ways · cascades · unlimited free-spin multiplier.",
     symbols: syms,
     cols: 6,
     spin: () => {
-      let grid = genVariableGrid(6, 2, 7, syms, weights);
-      const ways = countWays(grid);
       const frames: Frame[] = [];
       let total = 0;
-      let mult = 1;
+      let grid = newGrid();
+      const ways = countWays(grid);
+
+      // Base game: cascades pay at ×1 (no multiplier — that's a free-spins thing).
+      const baseScat = countSym(grid, SC);
       let step = 0;
       while (step < 12) {
-        const { mult: m, highlights } = evalWays(grid, pay, {});
+        const { mult: m, highlights } = evalWays(grid, pay, { scatter: SC });
         if (m <= 0 || highlights.length === 0) {
           if (step === 0) frames.push({ grid, win: 0 });
           break;
         }
-        const w = m * mult;
-        total += w;
-        frames.push({ grid, highlights, win: w, label: step > 0 ? `Cascade ×${mult}` : undefined });
+        total += m;
+        frames.push({ grid, highlights, win: m, label: step > 0 ? "Cascade" : undefined });
         grid = tumble(grid, new Set(highlights), syms, weights);
-        mult++;
         step++;
+      }
+
+      // 4+ scatters → 12 free spins with an UNLIMITED progressive multiplier
+      // that increments on every cascade and never resets (Bonanza-style).
+      if (baseScat >= 4) {
+        frames.push({ grid, win: 0, label: `${baseScat} 💫 — 12 Free Spins!` });
+        let fsMult = 1;
+        let spins = 12;
+        let i = 0;
+        while (spins > 0 && i < 50) {
+          spins--;
+          i++;
+          let fg = newGrid();
+          let s = 0;
+          while (s < 12) {
+            const { mult: m, highlights } = evalWays(fg, pay, { scatter: SC });
+            if (m <= 0 || highlights.length === 0) break;
+            const w = m * fsMult;
+            total += w;
+            frames.push({ grid: fg.map((c) => [...c]), highlights, win: w, label: `FS ${i} · ×${fsMult}` });
+            fg = tumble(fg, new Set(highlights), syms, weights);
+            fsMult++; // persists across the whole bonus
+            s++;
+          }
+          if (countSym(fg, SC) >= 3) spins += 5; // retrigger
+        }
       }
       return { frames, totalMult: cap(total), ways };
     },
