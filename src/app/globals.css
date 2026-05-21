@@ -181,3 +181,8 @@ body {
   65% { filter: blur(1.4px); }
   100% { filter: blur(0); }
 }
+/* Tumble gravity: a symbol falls in from --fall pixels above its final cell. */
+@keyframes tumbleFall {
+  0% { transform: translateY(calc(-1 * var(--fall, 0px))); }
+  100% { transform: translateY(0); }
+}

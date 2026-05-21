@@ -47,6 +47,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const [reveal, setReveal] = useState({ seq: 0, drop: false });
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
   const [overlays, setOverlays] = useState<Record<string, string>>({});
+  const [fallMap, setFallMap] = useState<Record<string, number> | null>(null);
   const [exploding, setExploding] = useState<Set<string>>(new Set());
   const [feature, setFeature] = useState<{ text: string; seq: number } | null>(null);
   const [ways, setWays] = useState<number | null>(null);
@@ -92,6 +93,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setHighlights(new Set());
     setExploding(new Set());
     setOverlays({});
+    setFallMap(null);
     setFeature(null);
 
     const result = game.spin(wager, state.stats.luck, { buy });
@@ -112,6 +114,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     // Land on the static grid (no drop — the reels already placed the symbols).
     setGrid(target.map((c) => c.slice()));
     setOverlays(result.frames[0].overlays ?? {});
+    setFallMap(null);
     setReveal((s) => ({ seq: s.seq + 1, drop: false }));
     setMode("grid");
     await sleep(140);
@@ -132,6 +135,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         setHighlights(new Set());
         setGrid(frame.grid.map((c) => c.slice()));
         setOverlays(frame.overlays ?? {});
+        setFallMap(frame.fall ?? null);
         setReveal((s) => ({ seq: s.seq + 1, drop: true }));
         await sleep(470);
         if (cancelled.current) return;
@@ -226,10 +230,16 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                       const boom = exploding.has(k);
                       const dim = highlights.size > 0 && !on;
                       const badge = overlays[k];
+                      // Tumble: this cell fell `fallRows` rows into place. With a
+                      // fall map we animate gravity per-cell (static cells don't
+                      // move); otherwise a full-board drop (free spins / respins).
+                      const tumbling = fallMap != null;
+                      const fallRows = tumbling ? fallMap[k] ?? 0 : 0;
+                      const animate = tumbling && fallRows > 0 ? "tumbleFall 0.4s cubic-bezier(0.3, 1.1, 0.5, 1) both" : undefined;
                       return (
                         <div
                           key={`${r}-${reveal.seq}`}
-                          className={`relative flex items-center justify-center rounded-md ${reveal.drop ? "slot-drop" : ""}`}
+                          className={`relative flex items-center justify-center rounded-md ${!tumbling && reveal.drop ? "slot-drop" : ""}`}
                           style={{
                             width: cs,
                             height: cs,
@@ -238,7 +248,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                             boxShadow: on ? `0 0 16px 2px ${theme.winGlow}` : undefined,
                             opacity: dim ? 0.32 : 1,
                             transition: "opacity .2s, box-shadow .15s, border-color .15s",
-                            animationDelay: reveal.drop ? `${c * 0.04 + r * 0.03}s` : undefined,
+                            animation: animate,
+                            ["--fall" as string]: tumbling ? `${fallRows * pitch}px` : undefined,
+                            animationDelay: !tumbling && reveal.drop ? `${c * 0.04 + r * 0.03}s` : undefined,
                           }}
                         >
                           <span

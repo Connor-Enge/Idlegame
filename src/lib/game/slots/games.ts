@@ -431,15 +431,19 @@ const megaways: SlotGame = (() => {
       // Base game: cascades pay at ×1 (no multiplier — that's a free-spins thing).
       const baseScat = countSym(grid, SC);
       let step = 0;
+      let pend: Record<string, number> | undefined;
       while (step < 12) {
         const { mult: m, highlights } = evalWays(grid, pay, { scatter: SC });
         if (m <= 0 || highlights.length === 0) {
           if (step === 0) frames.push({ grid, win: 0 });
+          else frames.push({ grid, win: 0, fall: pend });
           break;
         }
         total += m;
-        frames.push({ grid, highlights, win: m, label: step > 0 ? "Cascade" : undefined });
-        grid = tumble(grid, new Set(highlights), syms, weights);
+        frames.push({ grid, highlights, win: m, fall: pend, label: step > 0 ? "Cascade" : undefined });
+        const t = tumble(grid, new Set(highlights), syms, weights);
+        grid = t.grid;
+        pend = t.fall;
         step++;
       }
 
@@ -455,13 +459,16 @@ const megaways: SlotGame = (() => {
           i++;
           let fg = newGrid();
           let s = 0;
+          let fpend: Record<string, number> | undefined;
           while (s < 12) {
             const { mult: m, highlights } = evalWays(fg, pay, { scatter: SC });
             if (m <= 0 || highlights.length === 0) break;
             const w = m * fsMult;
             total += w;
-            frames.push({ grid: fg.map((c) => [...c]), highlights, win: w, label: `FS ${i} · ×${fsMult}` });
-            fg = tumble(fg, new Set(highlights), syms, weights);
+            frames.push({ grid: fg.map((c) => [...c]), highlights, win: w, fall: fpend, label: `FS ${i} · ×${fsMult}` });
+            const t = tumble(fg, new Set(highlights), syms, weights);
+            fg = t.grid;
+            fpend = t.fall;
             fsMult++; // persists across the whole bonus
             s++;
           }
@@ -500,16 +507,20 @@ const cluster: SlotGame = (() => {
       const frames: Frame[] = [];
       let total = 0;
       let chain = 0;
+      let pend: Record<string, number> | undefined;
       while (chain < 12) {
         const { mult, highlights } = evalClusters(grid, pay, 5);
         if (mult <= 0 || highlights.length === 0) {
           if (chain === 0) frames.push({ grid, win: 0 });
+          else frames.push({ grid, win: 0, fall: pend }); // show the final settle
           break;
         }
         const m = mult * (1 + chain * 0.5);
         total += m;
-        frames.push({ grid, highlights, win: m, label: chain > 0 ? `Cascade ×${(1 + chain * 0.5).toFixed(1)}` : undefined });
-        grid = tumble(grid, new Set(highlights), syms, weights);
+        frames.push({ grid, highlights, win: m, fall: pend, label: chain > 0 ? `Cascade ×${(1 + chain * 0.5).toFixed(1)}` : undefined });
+        const t = tumble(grid, new Set(highlights), syms, weights);
+        grid = t.grid;
+        pend = t.fall;
         chain++;
       }
       return { frames, totalMult: cap(total) };
@@ -541,17 +552,21 @@ const cascade: SlotGame = (() => {
     let grid = g0;
     let win = 0;
     let step = 0;
+    let pend: Record<string, number> | undefined;
     while (step < 9) {
       const { mult, highlights } = evalWays(grid, pay, { scatter: SC });
       if (mult <= 0) {
         if (step === 0) fr.push({ grid, win: 0 });
+        else fr.push({ grid, win: 0, fall: pend });
         break;
       }
       const x = ladder[Math.min(step, ladder.length - 1)];
       const m = mult * x;
       win += m;
-      fr.push({ grid, highlights, win: m, label: `${fs != null ? `FS ${fs} · ` : ""}×${x}` });
-      grid = tumble(grid, new Set(highlights), syms, weights);
+      fr.push({ grid, highlights, win: m, fall: pend, label: `${fs != null ? `FS ${fs} · ` : ""}×${x}` });
+      const t = tumble(grid, new Set(highlights), syms, weights);
+      grid = t.grid;
+      pend = t.fall;
       step++;
     }
     return { frames: fr, win, grid };
@@ -628,10 +643,14 @@ const scatterPays: SlotGame = (() => {
     let grid = g0;
     let step = 0;
     let bombSum = 0;
+    let pend: Record<string, number> | undefined;
     const bombRoll = () => (fs ? 2 + Math.floor(Math.random() * 99) : 2 + Math.floor(Math.random() * 24));
     while (step < 10) {
       const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC, BLANK]);
-      if (mult <= 0) break;
+      if (mult <= 0) {
+        if (step > 0) fr.push({ grid: grid.map((c) => [...c]), win: 0, fall: pend });
+        break;
+      }
       tot += mult;
       let stepBomb = 0;
       const bombCells: string[] = [];
@@ -647,9 +666,12 @@ const scatterPays: SlotGame = (() => {
         grid: grid.map((c) => [...c]),
         highlights: [...highlights, ...bombCells],
         win: mult,
+        fall: pend,
         label: stepBomb > 0 ? `+×${stepBomb}` : undefined,
       });
-      grid = tumble(grid, new Set(highlights), syms, weights);
+      const t = tumble(grid, new Set(highlights), syms, weights);
+      grid = t.grid;
+      pend = t.fall;
       step++;
     }
     if (tot > 0 && bombSum > 0) {

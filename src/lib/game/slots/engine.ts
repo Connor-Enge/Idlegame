@@ -10,6 +10,7 @@ export interface Frame {
   label?: string; // e.g. "Cascade ×3", "Respin 2", "Free spin 4/8"
   win?: number; // payout multiplier credited on this frame
   overlays?: Record<string, string>; // "col,row" -> badge text (e.g. coin values)
+  fall?: Record<string, number>; // "col,row" -> rows this symbol fell (tumble)
 }
 
 export interface SpinResult {
@@ -210,19 +211,39 @@ export function evalScatterPays(
   return { mult, highlights: hl };
 }
 
-// Remove winning cells, collapse columns downward, refill from the top.
-export function tumble(grid: Sym[][], remove: Set<string>, syms: Sym[], weights: number[]): Sym[][] {
+// Remove winning cells, then apply gravity: surviving symbols fall into the
+// gaps below them and new symbols drop in from the top. Returns the new grid
+// plus, per cell, how many rows that symbol fell (0 = it didn't move) so the
+// UI can animate a real tumble rather than re-dropping the whole board.
+export function tumble(
+  grid: Sym[][],
+  remove: Set<string>,
+  syms: Sym[],
+  weights: number[],
+): { grid: Sym[][]; fall: Record<string, number> } {
   const out: Sym[][] = [];
+  const fall: Record<string, number> = {};
   for (let c = 0; c < grid.length; c++) {
     const rows = grid[c].length;
-    const kept: Sym[] = [];
-    for (let r = 0; r < rows; r++) if (!remove.has(key(c, r))) kept.push(grid[c][r]);
-    const need = rows - kept.length;
-    const top: Sym[] = [];
-    for (let i = 0; i < need; i++) top.push(weightedPick(syms, weights));
-    out.push([...top, ...kept]);
+    const survivors: { sym: Sym; r0: number }[] = [];
+    for (let r = 0; r < rows; r++) if (!remove.has(key(c, r))) survivors.push({ sym: grid[c][r], r0: r });
+    const k = rows - survivors.length; // removed = number of new symbols
+    const col: Sym[] = [];
+    // New symbols fill the top k rows; each falls in from k rows above.
+    for (let r = 0; r < k; r++) {
+      col.push(weightedPick(syms, weights));
+      fall[key(c, r)] = k;
+    }
+    // Survivors keep their order, settling below; each falls by the gap count.
+    for (let i = 0; i < survivors.length; i++) {
+      const finalRow = k + i;
+      col.push(survivors[i].sym);
+      const d = finalRow - survivors[i].r0;
+      if (d > 0) fall[key(c, finalRow)] = d;
+    }
+    out.push(col);
   }
-  return out;
+  return { grid: out, fall };
 }
 
 export function countWays(grid: Sym[][]): number {
