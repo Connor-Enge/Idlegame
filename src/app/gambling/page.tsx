@@ -4,15 +4,15 @@ import { useState } from "react";
 import { SectionTitle } from "@/components/ui";
 import CoinFlip from "@/components/casino/CoinFlip";
 import Dice from "@/components/casino/Dice";
-import Slots from "@/components/casino/Slots";
+import SlotsHub from "@/components/casino/SlotsHub";
 import Roulette from "@/components/casino/Roulette";
 import Blackjack from "@/components/casino/Blackjack";
 import type { GambleGame } from "@/lib/game/types";
 
 const GAMES: { id: GambleGame; name: string; icon: string }[] = [
+  { id: "slots", name: "Slots", icon: "🎰" },
   { id: "roulette", name: "Roulette", icon: "🎡" },
   { id: "blackjack", name: "Blackjack", icon: "🃏" },
-  { id: "slots", name: "Slots", icon: "🎰" },
   { id: "dice", name: "Dice", icon: "🎲" },
   { id: "coinflip", name: "Coin Flip", icon: "🪙" },
 ];
@@ -32,7 +32,7 @@ export default function GamblingPage() {
         </h1>
         {game === "roulette" && <Roulette />}
         {game === "blackjack" && <Blackjack />}
-        {game === "slots" && <Slots />}
+        {game === "slots" && <SlotsHub />}
         {game === "dice" && <Dice />}
         {game === "coinflip" && <CoinFlip />}
       </div>
