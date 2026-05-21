@@ -173,7 +173,7 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // long-run return-to-player sits around ~90% (house edge ~10%). Tuned against
 // a Monte-Carlo probe; adjust here to retune without touching paytables.
 const CAL: Record<string, number> = {
-  scatter: 0.1065,
+  scatter: 0.1039,
   megaways: 0.0224,
   cluster: 3.22,
   holdwin: 0.49,
@@ -603,7 +603,7 @@ const scatterPays: SlotGame = (() => {
   const SC = "🍭";
   const BLANK = "▪️";
   const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BLANK, BOMB, SC];
-  const weights = [18, 16, 13, 10, 7, 26, 5, 5];
+  const weights = [18, 16, 13, 10, 7, 26, 6, 2];
   const base: Record<string, [number, number, number]> = {
     "🍌": [0.25, 0.75, 2],
     "🍎": [0.4, 1.2, 3],
@@ -619,25 +619,29 @@ const scatterPays: SlotGame = (() => {
   };
   // One tumble sequence: pays 8+ anywhere, tumbles, then accumulated ✖️ bombs
   // multiply the sequence total (Sweet-Bonanza mechanic).
-  const playSeq = (g0: Sym[][]) => {
+  // One tumble sequence. In free spins the multiplier bombs are bigger
+  // (2x–100x) and guaranteed on every winning tumble — that's why the bonus
+  // is the star, exactly like Sweet Bonanza.
+  const playSeq = (g0: Sym[][], fs = false) => {
     const fr: Frame[] = [];
     let tot = 0;
     let grid = g0;
     let step = 0;
-    let bombSum = 0; // multiplier bombs accumulate across every tumble
+    let bombSum = 0;
+    const bombRoll = () => (fs ? 2 + Math.floor(Math.random() * 99) : 2 + Math.floor(Math.random() * 24));
     while (step < 10) {
       const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC, BLANK]);
       if (mult <= 0) break;
       tot += mult;
-      // Collect any ✖️ bombs visible on this winning tumble (Sweet Bonanza).
       let stepBomb = 0;
       const bombCells: string[] = [];
       for (let c = 0; c < grid.length; c++)
         for (let r = 0; r < grid[c].length; r++)
           if (grid[c][r] === BOMB) {
-            stepBomb += 2 + Math.floor(Math.random() * 24); // 2x–25x
+            stepBomb += bombRoll();
             bombCells.push(key(c, r));
           }
+      if (fs && stepBomb === 0) stepBomb += bombRoll(); // guaranteed bomb in FS
       bombSum += stepBomb;
       fr.push({
         grid: grid.map((c) => [...c]),
@@ -666,7 +670,7 @@ const scatterPays: SlotGame = (() => {
     blurb: "8+ anywhere; ✖️ bombs; 4 🍭 = free spins.",
     symbols: syms,
     cols: 6,
-    buyCost: 6,
+    buyCost: 37,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -681,7 +685,7 @@ const scatterPays: SlotGame = (() => {
         frames.push({ grid: baseSeq.grid, win: 0, label: "4 🍭 — 10 Free Spins!" });
         for (let i = 1; i <= 10; i++) {
           const fg = genGrid(6, 5, syms, weights);
-          const fs = playSeq(fg);
+          const fs = playSeq(fg, true);
           total += fs.win;
           const out = fs.frames.length ? fs.frames : [{ grid: fg, win: 0 }];
           out.forEach((fr) => frames.push({ ...fr, label: fr.label ? `FS ${i}/10 · ${fr.label}` : `Free spin ${i}/10` }));
