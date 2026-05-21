@@ -315,7 +315,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                     </div>
                   );
                 })
-              : grid.map((col, c) => (
+              : grid.map((col, c) => {
+                  const locked = locksOpen && lockedCols.has(c);
+                  return (
                   <div
                     key={c}
                     onClick={() => toggleLock(c)}
@@ -323,12 +325,20 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                     style={{
                       minHeight: maxRows * pitch,
                       cursor: locksOpen ? "pointer" : "default",
-                      outline: locksOpen && lockedCols.has(c) ? `2px solid ${theme.accent}` : undefined,
+                      outline: locked ? `3px solid ${theme.accent}` : locksOpen ? "2px dashed rgba(255,255,255,0.25)" : undefined,
+                      outlineOffset: locksOpen ? "2px" : undefined,
                       borderRadius: 6,
+                      transform: locked ? "scale(0.97)" : undefined,
+                      transition: "transform .12s",
                     }}
                   >
-                    {locksOpen && (
-                      <span className="absolute right-0 top-0 z-10 text-[11px]">{lockedCols.has(c) ? "🔒" : "🔓"}</span>
+                    {locked && (
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md"
+                        style={{ background: `${theme.accent}22`, border: `1px solid ${theme.accent}` }}
+                      >
+                        <span className="text-2xl drop-shadow">🔒</span>
+                      </div>
                     )}
                     {col.map((sym, r) => {
                       const k = key(c, r);
@@ -377,7 +387,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                       );
                     })}
                   </div>
-                ))}
+                  );
+                })}
           </div>
         </div>
       </div>
@@ -451,14 +462,23 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
         {/* Lucky Locks (Book of Shadows) — lock reels, pay to respin the rest. */}
         {locksOpen && !spinning && (
-          <button
-            onClick={doRespin}
-            disabled={lockedCols.size === 0 || lockCost * wager > cash}
-            className="w-full rounded-xl border py-2 text-sm font-bold disabled:opacity-40"
-            style={{ borderColor: theme.accent, color: theme.accent }}
-          >
-            {lockedCols.size === 0 ? "Lucky Locks — tap reels to lock" : `Respin held reels · ${money(lockCost * wager)} (${lockCost}×)`}
-          </button>
+          <div className="rounded-xl border p-2" style={{ borderColor: theme.accent, background: `${theme.accent}11` }}>
+            <div className="mb-1.5 text-center text-[11px] font-semibold" style={{ color: theme.accent }}>
+              🔒 LUCKY LOCKS — tap reels to hold ({lockedCols.size} held), then respin the rest
+            </div>
+            <button
+              onClick={doRespin}
+              disabled={lockedCols.size === 0 || lockCost * wager > cash}
+              className="w-full rounded-lg py-2.5 text-sm font-black disabled:opacity-40"
+              style={{ background: theme.accent, color: theme.accentText }}
+            >
+              {lockedCols.size === 0
+                ? "Tap reels to hold"
+                : lockCost * wager > cash
+                  ? `Respin needs ${money(lockCost * wager)}`
+                  : `RESPIN · ${money(lockCost * wager)} (${lockCost}×)`}
+            </button>
+          </div>
         )}
 
         <button
