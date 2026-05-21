@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, Pill, ProgressBar } from "@/components/ui";
-import { CAREER_TRACKS, EDUCATION } from "@/lib/game/data";
+import { CAREER_TRACKS, EDUCATION, SHIFT_GIG_SCALE } from "@/lib/game/data";
 import { GIGS, PERKS, PROJECTS, SKILLS, MAX_SKILL_LEVEL } from "@/lib/game/careerData";
 import { canStartStudy, educationById, trackUnlocked, xpToNext } from "@/lib/game/progression";
 import {
@@ -353,7 +353,7 @@ function ProjectsSection({ state, run }: { state: GameState; run: RunFn }) {
   if (active) {
     const def = projectById(active.projectId)!;
     const done = active.totalShifts - active.shiftsRemaining;
-    const bonus = Math.round(level.baseSalaryPerTick * def.rewardPerShiftSalary);
+    const bonus = Math.round(level.baseSalaryPerTick * def.rewardPerShiftSalary * SHIFT_GIG_SCALE);
     return (
       <section className="space-y-2">
         <SubHeading>Active Project</SubHeading>
@@ -388,7 +388,7 @@ function ProjectsSection({ state, run }: { state: GameState; run: RunFn }) {
       <SubHeading sub="Multi-shift assignments for a lump-sum payoff.">Projects</SubHeading>
       {offered.map((p) => {
         const skill = SKILLS.find((s) => s.id === p.skillId);
-        const bonus = Math.round(level.baseSalaryPerTick * p.rewardPerShiftSalary);
+        const bonus = Math.round(level.baseSalaryPerTick * p.rewardPerShiftSalary * SHIFT_GIG_SCALE);
         return (
           <Card key={p.id}>
             <div className="flex items-center justify-between gap-3">

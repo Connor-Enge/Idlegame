@@ -1,4 +1,12 @@
-import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
+import {
+  BASE_ASSETS,
+  BIZ_PROFIT_SCALE,
+  BUSINESS_TYPES,
+  CAREER_TRACKS,
+  PROPERTIES,
+  RENT_SCALE,
+  SALARY_SCALE,
+} from "./data";
 import { freshCareer, normalizeCareer, perkBundle } from "./career";
 import { initialEconomy, stepAsset, stepEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
@@ -173,7 +181,8 @@ function stepOnce(s: GameState): GameState {
         mult *
         s.career.salaryMultiplier *
         moraleFactor *
-        perks.passiveSalaryMult;
+        perks.passiveSalaryMult *
+        SALARY_SCALE;
       income += salary;
       s.career.totalEarned += salary;
       s.stats.reputation += 0.2;
@@ -192,7 +201,7 @@ function stepOnce(s: GameState): GameState {
     if (!def) continue;
     const occupied = owned.rented && Math.random() < def.occupancyChance;
     const rent = occupied ? def.rentPerTick * (1 + s.economy.inflation / 100) * mult : 0;
-    income += rent - def.upkeepPerTick;
+    income += (rent - def.upkeepPerTick) * RENT_SCALE;
     // Property value drifts with sentiment.
     owned.currentValue = Math.max(
       def.baseValue * 0.3,
@@ -212,7 +221,7 @@ function stepOnce(s: GameState): GameState {
     const revMult = biz.level * (1 + biz.marketingLevel * 0.15) * (1 + s.economy.gdpGrowth);
     const revenue = def.baseRevenuePerTick * revMult * mult;
     const cost = def.baseCostPerTick * biz.level + biz.employees * 5;
-    income += revenue - cost;
+    income += (revenue - cost) * BIZ_PROFIT_SCALE;
   }
 
   s.stats.cash = Math.max(0, s.stats.cash + income);

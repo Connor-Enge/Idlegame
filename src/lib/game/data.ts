@@ -17,11 +17,26 @@ export const TICK_MS = 1000; // one economic tick per second of active play
 export const XP_BASE = 80;
 export const XP_GROWTH = 1.16; // xp to reach next level multiplies by this
 
-// Net-worth thresholds that permanently unlock each system, in order.
+// ---------------------------------------------------------------------------
+// Global economy pacing — income-rate scalars. These damp how fast each
+// income channel pays out (1 = original, lower = slower) WITHOUT removing any
+// income stream: every job, gig, business, rental and dividend still works,
+// just at a calmer rate so wealth compounds over ~30-50h and across lives
+// (via Legacy Points) instead of within a single ~5-8h life. Tune here first.
+// ---------------------------------------------------------------------------
+export const SALARY_SCALE = 0.2; // passive salary while employed
+export const RENT_SCALE = 0.25; // net rent from property
+export const BIZ_PROFIT_SCALE = 0.12; // net business profit per tick
+export const SHIFT_GIG_SCALE = 0.25; // active shift / gig lump-sum payouts
+
+// Net-worth thresholds that permanently unlock each system, in order. These
+// gates pace access: the wealth engines (business, real estate) sit high
+// enough that a first life lives mostly off jobs + a small brokerage, and you
+// grow into the engines across lives via Legacy Points.
 export const FEATURE_UNLOCKS: { flag: FeatureFlag; netWorth: number; label: string }[] = [
-  { flag: "invest", netWorth: 3_000, label: "Brokerage access" },
-  { flag: "business", netWorth: 30_000, label: "Business registration" },
-  { flag: "realestate", netWorth: 120_000, label: "Property market access" },
+  { flag: "invest", netWorth: 5_000, label: "Brokerage access" },
+  { flag: "business", netWorth: 250_000, label: "Business registration" },
+  { flag: "realestate", netWorth: 1_000_000, label: "Property market access" },
 ];
 
 // Prestige: retire to convert net worth into permanent Legacy Points.
@@ -45,7 +60,7 @@ export const MARGIN_RATE_PER_TICK = 0.000006; // interest charged on borrowed $
 export const MARGIN_MULTIPLIER = 1; // borrow up to 1x your holdings value
 
 // Dividends: yield is an annual %, paid as a small trickle every tick.
-export const DIVIDEND_PER_TICK_FACTOR = 0.0009;
+export const DIVIDEND_PER_TICK_FACTOR = 0.0005;
 
 // ---------------------------------------------------------------------------
 // Education — the keys that gate prestigious careers and advanced systems.

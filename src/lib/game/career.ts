@@ -1,4 +1,4 @@
-import { CAREER_TRACKS } from "./data";
+import { CAREER_TRACKS, SHIFT_GIG_SCALE } from "./data";
 import {
   GIGS,
   MAX_SKILL_LEVEL,
@@ -235,7 +235,8 @@ export function resolveShift(state: GameState, moments: ShiftMoment[]): ShiftRes
       (state.career.salaryMultiplier ?? 1) *
       perks.shiftPayMult *
       incomeMult *
-      macro,
+      macro *
+      SHIFT_GIG_SCALE,
   );
 
   const reputation = Math.round((2 + score * 6 + level.tier) * perks.reputationMult);
@@ -269,7 +270,9 @@ export function resolveShift(state: GameState, moments: ShiftMoment[]): ShiftRes
   if (proj && proj.shiftsRemaining <= 1) {
     const def = PROJECTS.find((p) => p.id === proj.projectId);
     if (def) {
-      const bonus = Math.round(level.baseSalaryPerTick * def.rewardPerShiftSalary * incomeMult);
+      const bonus = Math.round(
+        level.baseSalaryPerTick * def.rewardPerShiftSalary * incomeMult * SHIFT_GIG_SCALE,
+      );
       projectCompleted = { name: def.name, bonus };
     }
   }
@@ -318,7 +321,7 @@ export function resolveGig(state: GameState, gigId: string, quality: ShiftQualit
   const sLvl = getSkillLevel(state, gig.skillId);
   const incomeMult = incomeMultiplier(state.progression);
   const cash = Math.round(
-    gig.basePay * (0.4 + w * 1.1) * (1 + sLvl * 0.05) * incomeMult * perks.shiftPayMult,
+    gig.basePay * (0.4 + w * 1.1) * (1 + sLvl * 0.05) * incomeMult * perks.shiftPayMult * SHIFT_GIG_SCALE,
   );
   const skillXp = (6 + w * 9) * perks.skillXpMult;
   const reputation = Math.round((1 + w * 2) * perks.reputationMult);
