@@ -81,17 +81,22 @@ export function gamble(
   if (wager > state.stats.cash) return fail(state, "Not enough cash");
 
   const result = playGamble(game, wager, state.stats.luck, opts);
+  return commitGamble(state, result);
+}
+
+// Apply a precomputed gamble result (used by the animated casino games, which
+// determine the outcome up front and animate toward it before settling).
+export function commitGamble(state: GameState, result: GambleResult): ActionResult {
+  if (result.wager > state.stats.cash) return fail(state, "Not enough cash");
   const s = clone(state);
-  s.stats.cash = s.stats.cash - wager + result.payout;
-  // Winning builds a little reputation/luck momentum; losing erodes luck.
+  s.stats.cash = s.stats.cash - result.wager + result.payout;
   s.stats.luck = Math.max(0, s.stats.luck + (result.won ? 0.5 : -0.2));
-  // Playing builds XP win or lose, scaled by stake (capped).
-  grantXp(s.progression, Math.min(15, Math.log10(wager + 1) * 3));
+  grantXp(s.progression, Math.min(15, Math.log10(result.wager + 1) * 3));
   s.stats.netWorth = computeNetWorth(s);
   return {
     state: s,
     ok: true,
-    message: result.won ? `Won $${result.payout}!` : `Lost $${wager}.`,
+    message: result.won ? `Won $${result.payout.toLocaleString()}!` : `Lost $${result.wager.toLocaleString()}.`,
     gamble: result,
   };
 }

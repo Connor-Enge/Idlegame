@@ -105,6 +105,21 @@ export interface PlayerCareer {
 
 export type GambleGame = "coinflip" | "dice" | "slots" | "roulette" | "blackjack";
 
+export type RouletteBet =
+  | { type: "number"; number: number }
+  | { type: "red" | "black" | "even" | "odd" | "low" | "high" }
+  | { type: "dozen"; which: 1 | 2 | 3 }
+  | { type: "column"; which: 1 | 2 | 3 };
+
+export interface GambleOutcome {
+  coin?: "heads" | "tails";
+  diceRoll?: number; // 0..100
+  target?: number;
+  reels?: string[];
+  pocket?: number; // roulette 0..36
+  multiplier?: number;
+}
+
 export interface GambleResult {
   game: GambleGame;
   wager: number;
@@ -112,6 +127,7 @@ export interface GambleResult {
   net: number;
   won: boolean;
   detail: string;
+  outcome?: GambleOutcome;
 }
 
 // ---------------------------------------------------------------------------
