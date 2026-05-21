@@ -22,10 +22,11 @@ export interface SlotGame {
   blurb: string;
   symbols: Sym[];
   cols: number;
-  spin: (bet: number, luck: number, opts?: { buy?: boolean }) => SpinResult;
+  spin: (bet: number, luck: number, opts?: { buy?: boolean; rows?: number }) => SpinResult;
   buyCost?: number; // cost of Feature Buy, in multiples of the bet
   scatterSym?: Sym; // symbol that triggers the bonus (drives reel anticipation)
   scatterTrigger?: number; // how many are needed to trigger
+  rowOptions?: number[]; // selectable row counts (Book of Shadows "Shadow Rows")
 }
 
 // Each machine gets its own visual identity — distinct backdrop, reel frame,
@@ -165,6 +166,18 @@ export const SLOT_THEMES: Record<string, SlotTheme> = {
     font: "'Courier New', monospace",
     winGlow: "rgba(220,38,38,0.8)",
   },
+  shadows: {
+    pageBg: "radial-gradient(120% 90% at 50% 0%, #2e1a4d 0%, #170b2b 55%, #07030f 100%)",
+    cabinet: "linear-gradient(180deg,#7c5cc4 0%,#3b2566 100%)",
+    reelBg: "linear-gradient(180deg,#1d1036,#0a0518)",
+    cellBg: "rgba(167,139,250,0.07)",
+    cellBorder: "rgba(167,139,250,0.3)",
+    accent: "#c4b5fd",
+    accentText: "#1a0a2e",
+    title: "background:linear-gradient(90deg,#e9d5ff,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:2px",
+    font: "'Papyrus', 'Georgia', serif",
+    winGlow: "rgba(196,181,253,0.9)",
+  },
 };
 
 // Global safety cap so a freak win can't bankrupt the house economy.
@@ -183,8 +196,9 @@ const CAL: Record<string, number> = {
   book: 0.5255,
   jackpot: 1.64,
   ways243: 0.4725,
-  video: 0.676,
+  video: 0.169,
   classic: 0.8,
+  shadows: 1.0,
 };
 
 const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
@@ -261,80 +275,104 @@ const classic: SlotGame = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// 2. 5x3 video slot — 20 paylines, wilds, scatter → 10 free spins (wins ×3).
+// 2. Expanding Wilds — Starburst-style: a wild on the middle reels expands to
+//    fill the reel, substitutes for everything, and awards a respin with that
+//    reel HELD. More expanding wilds extend the respins. Win both ways.
 // ---------------------------------------------------------------------------
 const video: SlotGame = (() => {
-  const W = "🃏";
-  const SC = "🎁";
-  const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", "▪️", W, SC];
-  const weights = [20, 17, 13, 10, 7, 4, 22, 6, 2];
+  const W = "🌟"; // expanding wild
+  const syms = ["💜", "🟦", "🟩", "🟧", "🔷", "💎", "7️⃣", W];
+  const weights = [22, 20, 17, 14, 11, 7, 4, 5];
   const table: Record<string, [number, number, number]> = {
-    "🍇": [0.4, 1, 3],
-    "🍉": [0.5, 1.5, 4],
-    "🔔": [0.8, 2.5, 8],
-    "🪙": [1, 4, 15],
-    "💎": [2, 8, 30],
-    "👑": [4, 15, 60],
+    "💜": [0.25, 0.6, 1.5],
+    "🟦": [0.3, 0.8, 2],
+    "🟩": [0.4, 1.2, 3],
+    "🟧": [0.6, 2, 5],
+    "🔷": [1, 3, 8],
+    "💎": [2, 6, 18],
+    "7️⃣": [5, 15, 60],
   };
+  // 10 fixed lines, evaluated BOTH ways (left-to-right and right-to-left).
   const L = [
     [1, 1, 1, 1, 1], [0, 0, 0, 0, 0], [2, 2, 2, 2, 2],
-    [0, 1, 2, 1, 0], [2, 1, 0, 1, 2], [1, 0, 0, 0, 1],
-    [1, 2, 2, 2, 1], [0, 0, 1, 2, 2], [2, 2, 1, 0, 0],
-    [1, 2, 1, 0, 1], [1, 0, 1, 2, 1], [0, 1, 1, 1, 0],
-    [2, 1, 1, 1, 2], [0, 1, 0, 1, 0], [2, 1, 2, 1, 2],
-    [1, 1, 0, 1, 1], [1, 1, 2, 1, 1], [0, 0, 2, 0, 0],
-    [2, 2, 0, 2, 2], [0, 2, 0, 2, 0],
+    [0, 1, 2, 1, 0], [2, 1, 0, 1, 2], [1, 0, 1, 2, 1],
+    [1, 2, 1, 0, 1], [0, 1, 1, 1, 0], [2, 1, 1, 1, 2], [0, 0, 1, 2, 2],
   ];
+  const Lrev = L.map((line) => [...line].reverse());
   const pay = (s: Sym, c: number) => (table[s] ? (table[s][c - 3] ?? 0) * CAL.video : 0);
+  const evalBoth = (g: Sym[][]) => {
+    const a = evalLines(g, L, pay, W);
+    const b = evalLines(g, Lrev.map((l) => l), pay, W); // right-to-left
+    // For right-to-left we evaluate a mirrored grid so existing left-anchored
+    // logic still works.
+    const mirror = [...g].reverse();
+    const b2 = evalLines(mirror, L, pay, W);
+    const hl = new Set<string>([...a.highlights]);
+    // remap mirrored highlights back to real columns
+    for (const k of b2.highlights) {
+      const [c, r] = k.split(",").map(Number);
+      hl.add(key(g.length - 1 - c, r));
+    }
+    return { mult: a.mult + b2.mult, highlights: [...hl] };
+  };
+
+  // Expand any middle reel (1..3) that holds a wild; return the held reel set.
+  const expand = (g: Sym[][], held: Set<number>) => {
+    for (let c = 1; c <= 3; c++) {
+      if (held.has(c) || g[c].includes(W)) {
+        held.add(c);
+        for (let r = 0; r < g[c].length; r++) g[c][r] = W;
+      }
+    }
+    const hl: string[] = [];
+    for (const c of held) for (let r = 0; r < g[c].length; r++) hl.push(key(c, r));
+    return hl;
+  };
+  const newGrid = () => {
+    const g = genGrid(5, 3, syms, weights);
+    // Wilds only land on the middle three reels.
+    for (const c of [0, 4]) for (let r = 0; r < 3; r++) if (g[c][r] === W) g[c][r] = syms[Math.floor(Math.random() * 6)];
+    return g;
+  };
+
   return {
     id: "video",
-    name: "Royal Riches",
-    style: "20-Line Video",
-    icon: "👑",
-    blurb: "20 lines · wilds · 3 🎁 = free spins with expanding wilds.",
+    name: "Cosmic Wilds",
+    style: "Expanding Wilds",
+    icon: "🌟",
+    blurb: "Wilds expand on the middle reels & lock for respins. Win both ways.",
     symbols: syms,
     cols: 5,
-    buyCost: 93,
-    scatterSym: "🎁",
-    scatterTrigger: 3,
-    spin: (_b, _l, opts) => {
+    spin: () => {
       const frames: Frame[] = [];
       let total = 0;
-      const grid = genGrid(5, 3, syms, weights);
-      if (opts?.buy) forceScatters(grid, SC, 3);
-      const base = evalLines(grid, L, pay, W, SC);
-      total += base.mult;
-      const scat = countSym(grid, SC);
-      frames.push({ grid, highlights: base.highlights, win: base.mult, label: scat >= 3 ? "3 🎁 — 10 Free Spins!" : undefined });
-      if (scat >= 3) {
-        let spins = 10;
-        let i = 0;
-        while (spins > 0 && i < 40) {
-          spins--;
-          i++;
-          const fg = genGrid(5, 3, syms, weights);
-          // Expanding wilds: any reel with a wild fills that whole reel.
-          const exp: string[] = [];
-          for (let c = 0; c < 5; c++) {
-            if (fg[c].includes(W)) {
-              for (let r = 0; r < 3; r++) {
-                fg[c][r] = W;
-                exp.push(key(c, r));
-              }
-            }
-          }
-          const r = evalLines(fg, L, pay, W, SC);
-          const w = r.mult * 3;
-          total += w;
-          const more = countSym(fg, SC);
-          if (more >= 3) spins += 5; // retrigger
-          frames.push({
-            grid: fg,
-            highlights: [...new Set([...exp, ...r.highlights])],
-            win: w,
-            label: `Free spin ${i}/10 · ×3${more >= 3 ? " · +5!" : ""}`,
-          });
+      let grid = newGrid();
+      const held = new Set<number>();
+      let hl = expand(grid, held);
+      let r = evalBoth(grid);
+      total += r.mult;
+      frames.push({ grid: grid.map((c) => [...c]), highlights: [...new Set([...hl, ...r.highlights])], win: r.mult });
+
+      // Respins while new wilds keep landing (held reels stay full of wilds).
+      let prevHeld = held.size;
+      let guard = 0;
+      while (held.size > 0 && held.size < 3 && guard < 4) {
+        guard++;
+        const fg = newGrid();
+        for (const c of held) for (let rr = 0; rr < 3; rr++) fg[c][rr] = W; // keep held wild reels
+        hl = expand(fg, held);
+        if (held.size === prevHeld) {
+          // no new wild — show the final respin and stop
+          r = evalBoth(fg);
+          total += r.mult;
+          frames.push({ grid: fg.map((c) => [...c]), highlights: [...new Set([...hl, ...r.highlights])], win: r.mult, label: "Respin" });
+          break;
         }
+        prevHeld = held.size;
+        r = evalBoth(fg);
+        total += r.mult;
+        frames.push({ grid: fg.map((c) => [...c]), highlights: [...new Set([...hl, ...r.highlights])], win: r.mult, label: "Wild respin!" });
+        grid = fg;
       }
       return { frames, totalMult: cap(total) };
     },
@@ -856,7 +894,7 @@ const book: SlotGame = (() => {
   return {
     id: "book",
     name: "Book of Fortune",
-    style: "Expanding Wild",
+    style: "Book / Expanding Symbol",
     icon: "📖",
     blurb: "3 books = 10 free spins with an expanding symbol.",
     symbols: syms,
@@ -993,7 +1031,133 @@ const jackpot: SlotGame = (() => {
   };
 })();
 
+// ---------------------------------------------------------------------------
+// 11. Book of Shadows (Nolimit City recreation) — the book is wild AND scatter,
+//     selectable Shadow Rows expand the paylines (3/4/5 rows → 10/15/20 lines),
+//     and 3+ books award 10 free spins with a golden expanding symbol that is
+//     redrawn for the best-paying choice, with retriggers.
+// ---------------------------------------------------------------------------
+const shadows: SlotGame = (() => {
+  const B = "📕"; // book — acts as BOTH wild and scatter (Nolimit City)
+  // 10 regular symbols: 10-A royals (low) + eyeball, butterfly, goat skull,
+  // purple cat, witch (high). Real 5-of-a-kind values; witch & book top at 500x.
+  const syms = ["🔟", "🇯", "🇶", "🇰", "🇦", "👁️", "🦋", "🐐", "🐈‍⬛", "🧙‍♀️", B];
+  const weights = [16, 15, 14, 12, 11, 8, 7, 5, 4, 3, 4];
+  const table: Record<string, [number, number, number]> = {
+    "🔟": [0.2, 1, 10],
+    "🇯": [0.25, 1.2, 12],
+    "🇶": [0.3, 1.5, 15],
+    "🇰": [0.4, 2, 20],
+    "🇦": [0.5, 2.5, 25],
+    "👁️": [1, 5, 50],
+    "🦋": [1.5, 8, 75],
+    "🐐": [2, 10, 100],
+    "🐈‍⬛": [4, 20, 200],
+    "🧙‍♀️": [10, 50, 500],
+  };
+  const pay = (s: Sym, c: number) => (table[s] ? (table[s][c - 3] ?? 0) * CAL.shadows : 0);
+  // Book scatter pays for 3/4/5 anywhere (5 books = 500x, matching the witch).
+  const bookPay = (n: number) => (n >= 5 ? 500 : n >= 4 ? 20 : n >= 3 ? 2 : 0) * CAL.shadows;
+  const lineCount = (rows: number) => (rows >= 5 ? 20 : rows >= 4 ? 15 : 10);
+  const makeLines = (rows: number, count: number): number[][] => {
+    const out: number[][] = [];
+    for (let r = 0; r < rows && out.length < count; r++) out.push([r, r, r, r, r]);
+    for (let a = 0; a < rows; a++)
+      for (let b = 0; b < rows; b++) {
+        if (out.length >= count || a === b) continue;
+        out.push([a, b, a, b, a]);
+      }
+    for (let a = 0; a < rows; a++)
+      for (let b = 0; b < rows; b++) {
+        if (out.length >= count) break;
+        out.push([a, a, b, a, a]);
+      }
+    while (out.length < count) out.push([0, 1 % rows, 2 % rows, 1 % rows, 0]);
+    return out.slice(0, count);
+  };
+  const countB = (g: Sym[][]) => g.reduce((a, col) => a + col.filter((s) => s === B).length, 0);
+
+  return {
+    id: "shadows",
+    name: "Book of Shadows",
+    style: "Book · Shadow Rows",
+    icon: "📕",
+    blurb: "Book = wild + scatter · 3/4/5 rows = 10/15/20 lines · golden free spins.",
+    symbols: syms,
+    cols: 5,
+    rowOptions: [3, 4, 5],
+    scatterSym: B,
+    scatterTrigger: 3,
+    buyCost: 60,
+    spin: (_b, _l, opts) => {
+      const rows = opts?.rows ?? 3;
+      const lines = makeLines(rows, lineCount(rows));
+      const frames: Frame[] = [];
+      let total = 0;
+      // Keep the book/scatter frequency row-invariant (as real reel strips do)
+      // by thinning the book weight as rows grow — otherwise more cells = more
+      // free spins = runaway RTP at 4/5 rows.
+      const w = weights.map((x, i) => (i === weights.length - 1 ? (x * 3) / rows : x));
+
+      const grid = genGrid(5, rows, syms, w);
+      if (opts?.buy) forceScatters(grid, B, 3);
+      // Base: book is wild (substitutes) and scatter (pays anywhere + triggers).
+      const baseLines = evalLines(grid, lines, pay, B, B);
+      const books = countB(grid);
+      const bookCells: string[] = [];
+      for (let c = 0; c < 5; c++) for (let r = 0; r < rows; r++) if (grid[c][r] === B) bookCells.push(key(c, r));
+      total += baseLines.mult + bookPay(books);
+      frames.push({
+        grid,
+        highlights: [...new Set([...baseLines.highlights, ...bookCells])],
+        win: baseLines.mult + bookPay(books),
+        label: books >= 3 ? "3 📕 — 10 Free Spins!" : undefined,
+      });
+
+      if (books >= 3) {
+        // Pick the golden expanding symbol; "redraw" once and keep the higher
+        // payer (the in-game redraw choice, resolved for the player).
+        const poolSyms = ["🔟", "🇯", "🇶", "🇰", "🇦", "👁️", "🦋", "🐐", "🐈‍⬛", "🧙‍♀️"];
+        const draw = () => poolSyms[Math.floor(Math.random() * poolSyms.length)];
+        const d1 = draw();
+        const d2 = draw();
+        const special = pay(d1, 5) >= pay(d2, 5) ? d1 : d2;
+        let fsLeft = 10;
+        let i = 0;
+        while (fsLeft > 0 && i < 50) {
+          fsLeft--;
+          i++;
+          const fg = genGrid(5, rows, syms, w);
+          const hl: string[] = [];
+          // Golden symbol expands to fill every reel it lands on.
+          for (let c = 0; c < 5; c++) {
+            if (fg[c].includes(special)) {
+              for (let r = 0; r < rows; r++) {
+                fg[c][r] = special;
+                hl.push(key(c, r));
+              }
+            }
+          }
+          // The expanded golden symbol forms its line wins naturally; the book
+          // still pays/triggers as scatter.
+          const ln = evalLines(fg, lines, pay, B, B);
+          const fb = countB(fg);
+          let win = ln.mult + bookPay(fb);
+          if (fb >= 3) fsLeft += 10; // retrigger
+          total += win;
+          frames.push({ grid: fg, highlights: [...new Set([...hl, ...ln.highlights])], win, label: `Free spin ${i} · ${special}${fb >= 3 ? " · +10!" : ""}` });
+        }
+      }
+      // Real BoS keeps RTP ~equal across row configs via reel strips; we apply
+      // a per-row payout factor to the same effect (stake scales 1/1.5/2x).
+      const rowFactor = rows >= 5 ? 0.7 : rows >= 4 ? 0.9 : 1;
+      return { frames, totalMult: cap(total * rowFactor) };
+    },
+  };
+})();
+
 export const SLOT_GAMES: SlotGame[] = [
+  shadows,
   scatterPays,
   megaways,
   cluster,

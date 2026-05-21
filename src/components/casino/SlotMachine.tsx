@@ -54,6 +54,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const theme = SLOT_THEMES[game.id];
 
   const [wager, setWager] = useState(50);
+  const [rows, setRows] = useState<number | undefined>(game.rowOptions ? game.rowOptions[0] : undefined);
   const [mode, setMode] = useState<"grid" | "spin">("grid");
   const [grid, setGrid] = useState<Sym[][]>(() => restingGrid(game));
   const [strips, setStrips] = useState<Sym[][]>([]);
@@ -97,8 +98,11 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const rand = () => game.symbols[Math.floor(Math.random() * game.symbols.length)];
   const showFeature = (text: string) => setFeature((f) => ({ text, seq: (f?.seq ?? 0) + 1 }));
 
+  // Shadow Rows cost more per spin: 4 rows = +50%, 5 rows = 2x (Book of Shadows).
+  const rowMult = game.rowOptions && rows ? (rows >= 5 ? 2 : rows >= 4 ? 1.5 : 1) : 1;
+
   async function spin(buy = false) {
-    const stake = buy ? wager * (game.buyCost ?? 0) : wager;
+    const stake = (buy ? wager * (game.buyCost ?? 0) : wager) * rowMult;
     if (spinning || wager <= 0 || stake > cash || (buy && !game.buyCost)) return;
     cancelled.current = false;
     setSpinning(true);
@@ -110,7 +114,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setFallMap(null);
     setFeature(null);
 
-    const result = game.spin(wager, state.stats.luck, { buy });
+    const result = game.spin(wager, state.stats.luck, { buy, rows });
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
     const cols = target.length;
@@ -316,23 +320,43 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
       </div>
 
       <div className="mt-3 space-y-2">
+        {game.rowOptions && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-white/60">Shadow Rows</span>
+            {game.rowOptions.map((n) => (
+              <button
+                key={n}
+                disabled={spinning}
+                onClick={() => setRows(n)}
+                className="flex-1 rounded-lg py-1.5 text-xs font-bold transition disabled:opacity-50"
+                style={
+                  rows === n
+                    ? { background: theme.accent, color: theme.accentText }
+                    : { background: "rgba(255,255,255,0.08)", color: "#fff" }
+                }
+              >
+                {n} rows · {n >= 5 ? 20 : n >= 4 ? 15 : 10} lines
+              </button>
+            ))}
+          </div>
+        )}
         <WagerInput wager={wager} setWager={setWager} cash={cash} disabled={spinning} />
         <button
           onClick={() => spin(false)}
-          disabled={spinning || wager > cash || wager <= 0}
+          disabled={spinning || wager * rowMult > cash || wager <= 0}
           className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
           style={{ background: theme.accent, color: theme.accentText }}
         >
-          {spinning ? "Spinning…" : `SPIN · ${money(wager)}`}
+          {spinning ? "Spinning…" : `SPIN · ${money(wager * rowMult)}`}
         </button>
         {game.buyCost && (
           <button
             onClick={() => spin(true)}
-            disabled={spinning || wager <= 0 || wager * game.buyCost > cash}
+            disabled={spinning || wager <= 0 || wager * game.buyCost * rowMult > cash}
             className="w-full rounded-xl border py-2 text-sm font-bold disabled:opacity-40"
             style={{ borderColor: theme.accent, color: theme.accent, background: "transparent" }}
           >
-            Buy Bonus · {money(wager * game.buyCost)} ({game.buyCost}×)
+            Buy Bonus · {money(wager * game.buyCost * rowMult)} ({game.buyCost * rowMult}×)
           </button>
         )}
       </div>
