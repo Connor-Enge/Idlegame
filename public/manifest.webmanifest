@@ -1,0 +1,18 @@
+{
+  "name": "Gambler's Paradise",
+  "short_name": "Paradise",
+  "description": "An incremental mobile game of gambling, jobs, investing, real estate, business and a simulated global economy.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
