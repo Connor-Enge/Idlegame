@@ -27,6 +27,10 @@ export interface SlotGame {
   scatterSym?: Sym; // symbol that triggers the bonus (drives reel anticipation)
   scatterTrigger?: number; // how many are needed to trigger
   rowOptions?: number[]; // selectable row counts (Book of Shadows "Shadow Rows")
+  luckyLocks?: boolean; // after a base spin, lock reels and pay to respin the rest
+  respin?: (grid: Sym[][], lockedCols: number[], rows: number) => SpinResult; // Lucky Locks respin
+  lockCost?: (grid: Sym[][], lockedCols: number[], rows: number) => number; // cost in x bet
+  gamble?: boolean; // red/black double-or-nothing offered after a win
 }
 
 // Each machine gets its own visual identity — distinct backdrop, reel frame,
@@ -1076,82 +1080,97 @@ const shadows: SlotGame = (() => {
     return out.slice(0, count);
   };
   const countB = (g: Sym[][]) => g.reduce((a, col) => a + col.filter((s) => s === B).length, 0);
+  const wFor = (rows: number) => weights.map((x, i) => (i === weights.length - 1 ? (x * 3) / rows : x));
+  const HIGHS = new Set(["👁️", "🦋", "🐐", "🐈‍⬛", "🧙‍♀️"]);
+
+  // Resolve a fully-formed grid: base line/scatter win + free spins if 3+ books.
+  const resolve = (grid: Sym[][], rows: number): SpinResult => {
+    const lines = makeLines(rows, lineCount(rows));
+    const w = wFor(rows);
+    const frames: Frame[] = [];
+    let total = 0;
+    const baseLines = evalLines(grid, lines, pay, B, B);
+    const books = countB(grid);
+    const bookCells: string[] = [];
+    for (let c = 0; c < 5; c++) for (let r = 0; r < rows; r++) if (grid[c][r] === B) bookCells.push(key(c, r));
+    total += baseLines.mult + bookPay(books);
+    frames.push({
+      grid: grid.map((c) => [...c]),
+      highlights: [...new Set([...baseLines.highlights, ...bookCells])],
+      win: baseLines.mult + bookPay(books),
+      label: books >= 3 ? "3 📕 — 10 Free Spins!" : undefined,
+    });
+    if (books >= 3) {
+      const poolSyms = ["🔟", "🇯", "🇶", "🇰", "🇦", "👁️", "🦋", "🐐", "🐈‍⬛", "🧙‍♀️"];
+      const draw = () => poolSyms[Math.floor(Math.random() * poolSyms.length)];
+      const d1 = draw();
+      const d2 = draw();
+      const special = pay(d1, 5) >= pay(d2, 5) ? d1 : d2; // redraw → keep better
+      let fsLeft = 10;
+      let i = 0;
+      while (fsLeft > 0 && i < 50) {
+        fsLeft--;
+        i++;
+        const fg = genGrid(5, rows, syms, w);
+        const hl: string[] = [];
+        for (let c = 0; c < 5; c++) {
+          if (fg[c].includes(special)) {
+            for (let r = 0; r < rows; r++) {
+              fg[c][r] = special;
+              hl.push(key(c, r));
+            }
+          }
+        }
+        const ln = evalLines(fg, lines, pay, B, B);
+        const fb = countB(fg);
+        const win = ln.mult + bookPay(fb);
+        if (fb >= 3) fsLeft += 10;
+        total += win;
+        frames.push({ grid: fg, highlights: [...new Set([...hl, ...ln.highlights])], win, label: `Free spin ${i} · ${special}${fb >= 3 ? " · +10!" : ""}` });
+      }
+    }
+    const rowFactor = rows >= 5 ? 0.7 : rows >= 4 ? 0.9 : 1;
+    return { frames, totalMult: cap(total * rowFactor) };
+  };
 
   return {
     id: "shadows",
     name: "Book of Shadows",
     style: "Book · Shadow Rows",
     icon: "📕",
-    blurb: "Book = wild + scatter · 3/4/5 rows = 10/15/20 lines · golden free spins.",
+    blurb: "Book wild+scatter · Lucky Locks · 3/4/5 rows · golden free spins · gamble.",
     symbols: syms,
     cols: 5,
     rowOptions: [3, 4, 5],
     scatterSym: B,
     scatterTrigger: 3,
     buyCost: 60,
+    luckyLocks: true,
+    gamble: true,
     spin: (_b, _l, opts) => {
       const rows = opts?.rows ?? 3;
-      const lines = makeLines(rows, lineCount(rows));
-      const frames: Frame[] = [];
-      let total = 0;
-      // Keep the book/scatter frequency row-invariant (as real reel strips do)
-      // by thinning the book weight as rows grow — otherwise more cells = more
-      // free spins = runaway RTP at 4/5 rows.
-      const w = weights.map((x, i) => (i === weights.length - 1 ? (x * 3) / rows : x));
-
-      const grid = genGrid(5, rows, syms, w);
+      const grid = genGrid(5, rows, syms, wFor(rows));
       if (opts?.buy) forceScatters(grid, B, 3);
-      // Base: book is wild (substitutes) and scatter (pays anywhere + triggers).
-      const baseLines = evalLines(grid, lines, pay, B, B);
-      const books = countB(grid);
-      const bookCells: string[] = [];
-      for (let c = 0; c < 5; c++) for (let r = 0; r < rows; r++) if (grid[c][r] === B) bookCells.push(key(c, r));
-      total += baseLines.mult + bookPay(books);
-      frames.push({
-        grid,
-        highlights: [...new Set([...baseLines.highlights, ...bookCells])],
-        win: baseLines.mult + bookPay(books),
-        label: books >= 3 ? "3 📕 — 10 Free Spins!" : undefined,
-      });
-
-      if (books >= 3) {
-        // Pick the golden expanding symbol; "redraw" once and keep the higher
-        // payer (the in-game redraw choice, resolved for the player).
-        const poolSyms = ["🔟", "🇯", "🇶", "🇰", "🇦", "👁️", "🦋", "🐐", "🐈‍⬛", "🧙‍♀️"];
-        const draw = () => poolSyms[Math.floor(Math.random() * poolSyms.length)];
-        const d1 = draw();
-        const d2 = draw();
-        const special = pay(d1, 5) >= pay(d2, 5) ? d1 : d2;
-        let fsLeft = 10;
-        let i = 0;
-        while (fsLeft > 0 && i < 50) {
-          fsLeft--;
-          i++;
-          const fg = genGrid(5, rows, syms, w);
-          const hl: string[] = [];
-          // Golden symbol expands to fill every reel it lands on.
-          for (let c = 0; c < 5; c++) {
-            if (fg[c].includes(special)) {
-              for (let r = 0; r < rows; r++) {
-                fg[c][r] = special;
-                hl.push(key(c, r));
-              }
-            }
-          }
-          // The expanded golden symbol forms its line wins naturally; the book
-          // still pays/triggers as scatter.
-          const ln = evalLines(fg, lines, pay, B, B);
-          const fb = countB(fg);
-          let win = ln.mult + bookPay(fb);
-          if (fb >= 3) fsLeft += 10; // retrigger
-          total += win;
-          frames.push({ grid: fg, highlights: [...new Set([...hl, ...ln.highlights])], win, label: `Free spin ${i} · ${special}${fb >= 3 ? " · +10!" : ""}` });
-        }
+      return resolve(grid, rows);
+    },
+    // Lucky Locks: keep the chosen reels, respin the rest, then re-resolve.
+    respin: (grid, lockedCols, rows) => {
+      const w = wFor(rows);
+      const ng = grid.map((col, c) =>
+        lockedCols.includes(c) ? col.slice() : Array.from({ length: rows }, () => weightedPick(syms, w)),
+      );
+      return resolve(ng, rows);
+    },
+    // Respin price scales with the locked symbols — books cost the most.
+    lockCost: (grid, lockedCols) => {
+      let cost = 0;
+      for (const c of lockedCols) {
+        const col = grid[c];
+        if (col.includes(B)) cost += 20;
+        else if (col.some((s) => HIGHS.has(s))) cost += 2;
+        else cost += 0.6;
       }
-      // Real BoS keeps RTP ~equal across row configs via reel strips; we apply
-      // a per-row payout factor to the same effect (stake scales 1/1.5/2x).
-      const rowFactor = rows >= 5 ? 0.7 : rows >= 4 ? 0.9 : 1;
-      return { frames, totalMult: cap(total * rowFactor) };
+      return Math.round(cost * 100) / 100;
     },
   };
 })();

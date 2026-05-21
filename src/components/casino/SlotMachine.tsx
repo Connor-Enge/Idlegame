@@ -69,6 +69,12 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const [spinning, setSpinning] = useState(false);
   const [done, setDone] = useState<{ win: number; mult: number; tier: WinTier | null } | null>(null);
   const [displayWin, setDisplayWin] = useState(0);
+  // Lucky Locks (Book of Shadows): lock reels, pay to respin the rest.
+  const [keepCols, setKeepCols] = useState<Set<number>>(new Set());
+  const [locksOpen, setLocksOpen] = useState(false);
+  const [lockedCols, setLockedCols] = useState<Set<number>>(new Set());
+  // Red/black gamble.
+  const [gamble, setGamble] = useState<{ amount: number; tries: number } | null>(null);
   const cancelled = useRef(false);
 
   const cash = state.stats.cash;
@@ -101,8 +107,10 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   // Shadow Rows cost more per spin: 4 rows = +50%, 5 rows = 2x (Book of Shadows).
   const rowMult = game.rowOptions && rows ? (rows >= 5 ? 2 : rows >= 4 ? 1.5 : 1) : 1;
 
-  async function spin(buy = false) {
-    const stake = (buy ? wager * (game.buyCost ?? 0) : wager) * rowMult;
+  async function spin(o: { buy?: boolean; preset?: import("@/lib/game/slots/engine").SpinResult; keep?: number[]; stake?: number } = {}) {
+    const buy = !!o.buy;
+    const keep = o.keep ?? [];
+    const stake = o.stake ?? (buy ? wager * (game.buyCost ?? 0) : wager) * rowMult;
     if (spinning || wager <= 0 || stake > cash || (buy && !game.buyCost)) return;
     cancelled.current = false;
     setSpinning(true);
@@ -113,22 +121,23 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setOverlays({});
     setFallMap(null);
     setFeature(null);
+    setLocksOpen(false);
+    setGamble(null);
 
-    const result = game.spin(wager, state.stats.luck, { buy, rows });
+    const result = o.preset ?? game.spin(wager, state.stats.luck, { buy, rows });
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
     const cols = target.length;
-    // Anticipation is decided by the scatters that land on the earlier reels,
-    // not by whether this spin happens to pay.
     const anticipSet = anticipationReels(target, game.scatterSym, game.scatterTrigger);
 
-    // Build reel strips: buffer of random symbols, then the landing symbols.
-    setStrips(target.map((col) => [...Array.from({ length: BUF }, rand), ...col]));
+    // Locked reels (Lucky Locks respin) don't spin — they stay put.
+    setKeepCols(new Set(keep));
+    setStrips(target.map((col, c) => (keep.includes(c) ? col.slice() : [...Array.from({ length: BUF }, rand), ...col])));
     setAnticip(anticipSet);
-    setMode("spin"); // keyframe animation plays on mount of these reels
+    setMode("spin");
 
     let maxDur = 0;
-    for (let c = 0; c < cols; c++) maxDur = Math.max(maxDur, reelDuration(c, anticipSet.has(c)));
+    for (let c = 0; c < cols; c++) if (!keep.includes(c)) maxDur = Math.max(maxDur, reelDuration(c, anticipSet.has(c)));
     await sleep(maxDur + 150);
     if (cancelled.current) return;
 
@@ -178,9 +187,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setHighlights(new Set());
     const payout = Math.floor(wager * result.totalMult);
     run(
-      commitGamble(state, {
+      commitGamble(useGame.getState().state!, {
         game: "slots",
-        wager: stake, // a Feature Buy stakes buyCost × the bet
+        wager: stake,
         payout,
         net: payout - stake,
         won: payout > 0,
@@ -192,6 +201,53 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     if (result.note) showFeature(result.note);
     setDone({ win: payout, mult: result.totalMult, tier });
     setSpinning(false);
+
+    // Interactive follow-ups (Book of Shadows). FS rounds skip Lucky Locks.
+    const isFS = result.frames.length > 1;
+    if (game.luckyLocks && !isFS) {
+      setLocksOpen(true);
+      setLockedCols(new Set());
+    }
+    if (game.gamble && payout > 0) setGamble({ amount: payout, tries: 0 });
+  }
+
+  function toggleLock(c: number) {
+    if (spinning || !locksOpen) return;
+    setLockedCols((s) => {
+      const n = new Set(s);
+      if (n.has(c)) n.delete(c);
+      else n.add(c);
+      return n;
+    });
+  }
+
+  const lockCost = game.lockCost && locksOpen ? game.lockCost(grid, [...lockedCols], rows ?? 3) : 0;
+
+  function doRespin() {
+    if (!game.respin || lockedCols.size === 0) return;
+    const locked = [...lockedCols];
+    const stake = lockCost * wager;
+    if (stake <= 0 || stake > cash) return;
+    const preset = game.respin(grid, locked, rows ?? 3);
+    spin({ preset, keep: locked, stake });
+  }
+
+  function doGamble() {
+    if (!gamble) return;
+    const amt = gamble.amount;
+    const st = useGame.getState().state!;
+    const won = Math.random() < 0.5;
+    if (won) {
+      run(commitGamble(st, { game: "slots", wager: 0, payout: amt, net: amt, won: true, detail: `${game.name} — gamble` }), { silent: true });
+      const tries = gamble.tries + 1;
+      setDone((d) => (d ? { ...d, win: amt * 2 } : d));
+      if (tries >= 5) setGamble(null);
+      else setGamble({ amount: amt * 2, tries });
+    } else {
+      run(commitGamble(st, { game: "slots", wager: amt, payout: 0, net: -amt, won: false, detail: `${game.name} — gamble lost` }), { silent: true });
+      setDone((d) => (d ? { ...d, win: 0 } : d));
+      setGamble(null);
+    }
   }
 
   return (
@@ -211,6 +267,24 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
           <div className="flex items-start justify-center gap-1.5">
             {mode === "spin"
               ? strips.map((strip, c) => {
+                  // Held reel (Lucky Locks): show its symbols static, with a lock.
+                  if (keepCols.has(c)) {
+                    const col = grid[c] ?? strip;
+                    return (
+                      <div key={c} className="relative flex flex-col gap-1">
+                        {col.map((sym, r) => (
+                          <div
+                            key={r}
+                            className="flex items-center justify-center rounded-md"
+                            style={{ width: cs, height: cs, background: theme.cellBg, border: `1px solid ${theme.accent}` }}
+                          >
+                            <span style={{ fontSize: cs * 0.56 }}>{sym}</span>
+                          </div>
+                        ))}
+                        <span className="absolute right-0 top-0 text-[10px]">🔒</span>
+                      </div>
+                    );
+                  }
                   const rows = strip.length - BUF;
                   const isAnticip = anticip.has(c);
                   const dur = reelDuration(c, isAnticip);
@@ -242,7 +316,20 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                   );
                 })
               : grid.map((col, c) => (
-                  <div key={c} className="flex flex-col gap-1" style={{ minHeight: maxRows * pitch }}>
+                  <div
+                    key={c}
+                    onClick={() => toggleLock(c)}
+                    className="relative flex flex-col gap-1"
+                    style={{
+                      minHeight: maxRows * pitch,
+                      cursor: locksOpen ? "pointer" : "default",
+                      outline: locksOpen && lockedCols.has(c) ? `2px solid ${theme.accent}` : undefined,
+                      borderRadius: 6,
+                    }}
+                  >
+                    {locksOpen && (
+                      <span className="absolute right-0 top-0 z-10 text-[11px]">{lockedCols.has(c) ? "🔒" : "🔓"}</span>
+                    )}
                     {col.map((sym, r) => {
                       const k = key(c, r);
                       const on = highlights.has(k);
@@ -341,17 +428,50 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
           </div>
         )}
         <WagerInput wager={wager} setWager={setWager} cash={cash} disabled={spinning} />
+
+        {/* Red/black gamble (Book of Shadows) — double or nothing, up to 5x. */}
+        {gamble && !spinning && (
+          <div className="rounded-xl border p-2" style={{ borderColor: theme.accent }}>
+            <div className="mb-1 text-center text-[11px] text-white/70">
+              Gamble {money(gamble.amount)} · attempt {gamble.tries + 1}/5
+            </div>
+            <div className="flex gap-2">
+              <button onClick={doGamble} className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-black text-white">
+                ❤ Red
+              </button>
+              <button onClick={doGamble} className="flex-1 rounded-lg bg-black py-2 text-sm font-black text-white">
+                ♠ Black
+              </button>
+              <button onClick={() => setGamble(null)} className="rounded-lg bg-white/15 px-3 py-2 text-sm font-bold text-white">
+                Collect
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Lucky Locks (Book of Shadows) — lock reels, pay to respin the rest. */}
+        {locksOpen && !spinning && (
+          <button
+            onClick={doRespin}
+            disabled={lockedCols.size === 0 || lockCost * wager > cash}
+            className="w-full rounded-xl border py-2 text-sm font-bold disabled:opacity-40"
+            style={{ borderColor: theme.accent, color: theme.accent }}
+          >
+            {lockedCols.size === 0 ? "Lucky Locks — tap reels to lock" : `Respin held reels · ${money(lockCost * wager)} (${lockCost}×)`}
+          </button>
+        )}
+
         <button
-          onClick={() => spin(false)}
+          onClick={() => spin({ buy: false })}
           disabled={spinning || wager * rowMult > cash || wager <= 0}
           className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
           style={{ background: theme.accent, color: theme.accentText }}
         >
-          {spinning ? "Spinning…" : `SPIN · ${money(wager * rowMult)}`}
+          {spinning ? "Spinning…" : locksOpen ? `NEW SPIN · ${money(wager * rowMult)}` : `SPIN · ${money(wager * rowMult)}`}
         </button>
         {game.buyCost && (
           <button
-            onClick={() => spin(true)}
+            onClick={() => spin({ buy: true })}
             disabled={spinning || wager <= 0 || wager * game.buyCost * rowMult > cash}
             className="w-full rounded-xl border py-2 text-sm font-bold disabled:opacity-40"
             style={{ borderColor: theme.accent, color: theme.accent, background: "transparent" }}
