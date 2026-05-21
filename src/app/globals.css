@@ -104,3 +104,67 @@ body {
 @keyframes spinIdle {
   to { transform: rotate(360deg); }
 }
+
+/* ---- Slot machine animation suite ---- */
+
+/* Winning symbol: pulse + subtle spin */
+@keyframes winPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+.slot-win-sym { animation: winPulse 0.55s ease-in-out infinite; }
+
+/* Tumble: winning symbols explode away */
+@keyframes slotExplode {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.4); }
+  100% { transform: scale(0); opacity: 0; }
+}
+.slot-explode-sym { animation: slotExplode 0.32s ease-in forwards; }
+
+/* Tumble / reveal: symbols drop in from above with a bounce */
+@keyframes slotDrop {
+  0% { transform: translateY(-160%); opacity: 0; }
+  70% { opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.slot-drop { animation: slotDrop 0.42s cubic-bezier(0.3, 1.25, 0.5, 1) both; }
+
+/* Feature / multiplier popup */
+@keyframes featurePop {
+  0% { transform: scale(0.5) translateY(10px); opacity: 0; }
+  18% { transform: scale(1.12); opacity: 1; }
+  80% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.feature-pop { animation: featurePop 1.2s ease-out forwards; }
+
+/* Big-win banner entrance */
+@keyframes bigWinIn {
+  0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+  60% { transform: scale(1.18) rotate(2deg); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.bigwin-in { animation: bigWinIn 0.55s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+
+/* Coin shower */
+@keyframes coinFall {
+  0% { transform: translateY(-30px) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(460px) rotate(540deg); opacity: 0; }
+}
+.coin-fall { position: absolute; top: 0; animation: coinFall linear forwards; }
+
+/* Anticipation: glowing reel that's about to stop */
+@keyframes anticipGlow {
+  0%, 100% { box-shadow: inset 0 0 6px 0 var(--anticip, rgba(250, 204, 21, 0.3)); }
+  50% { box-shadow: inset 0 0 22px 4px var(--anticip, rgba(250, 204, 21, 0.85)); }
+}
+.anticip-reel { animation: anticipGlow 0.4s ease-in-out infinite; }
+
+/* Sparkle twinkle for big wins */
+@keyframes sparkle {
+  0%, 100% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1); opacity: 1; }
+}
+.sparkle { position: absolute; animation: sparkle 0.9s ease-in-out infinite; }
