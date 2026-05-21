@@ -2,7 +2,15 @@ import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
 import { freshCareer, normalizeCareer, perkBundle } from "./career";
 import { initialEconomy, stepAsset, stepEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
-import { defaultProgression, grantXp, incomeMultiplier, refreshUnlocks } from "./progression";
+import {
+  currentAge,
+  defaultLife,
+  defaultProgression,
+  grantXp,
+  incomeMultiplier,
+  lifeCredits,
+  refreshUnlocks,
+} from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
 export const STATE_VERSION = 2;
@@ -29,8 +37,22 @@ export function createInitialState(playerId: string): GameState {
     economy: initialEconomy(),
     assets: BASE_ASSETS.map((a) => ensureHistory({ ...a })),
     investing: defaultInvesting(),
+    life: defaultLife(),
     version: STATE_VERSION,
   };
+}
+
+// A new life: full reset (like prestige) but carrying legacy credits forward
+// and recording a death recap. Triggered when the player dies of old age.
+function rebirth(prev: GameState): GameState {
+  const netWorth = computeNetWorth(prev);
+  const credits = lifeCredits(netWorth);
+  const fresh = createInitialState(prev.playerId);
+  fresh.progression.legacyPoints = prev.progression.legacyPoints + credits;
+  fresh.progression.retirements = prev.progression.retirements + 1;
+  fresh.life.generation = prev.life.generation + 1;
+  fresh.life.deathReport = { age: Math.floor(currentAge(prev.life)), netWorth, credits };
+  return fresh;
 }
 
 // Backfill fields added in newer versions so older saves don't crash. Mutates.
@@ -54,6 +76,18 @@ export function normalizeState(s: GameState): GameState {
   // Career sub-state migration.
   if (!s.career) s.career = freshCareer();
   else normalizeCareer(s.career);
+
+  // Life/mortality migration for saves created before it existed.
+  if (!s.life) {
+    s.life = defaultLife();
+  } else {
+    const l = s.life;
+    if (l.ageTicks == null) l.ageTicks = 0;
+    if (l.startAge == null) l.startAge = 18;
+    if (l.deathAge == null || l.deathAge < 50) l.deathAge = 65 + Math.floor(Math.random() * 36);
+    if (l.generation == null) l.generation = 1;
+    if (l.deathReport === undefined) l.deathReport = null;
+  }
 
   // Reconcile the live asset list with any newly added instruments while
   // preserving simulated prices + chart history for assets the player had.
@@ -185,6 +219,14 @@ function stepOnce(s: GameState): GameState {
 
   // 7. Trickle XP from positive passive income so idle play still progresses.
   if (income > 0) grantXp(s.progression, Math.min(5, Math.log10(income + 1)));
+
+  // 8. Aging & mortality. Time marches on; when the player reaches their rolled
+  //    death age, this life ends — net worth converts to legacy credits and a
+  //    fresh life begins (the recap is surfaced via life.deathReport).
+  s.life.ageTicks += 1;
+  if (currentAge(s.life) >= s.life.deathAge) {
+    return rebirth(s);
+  }
 
   return s;
 }

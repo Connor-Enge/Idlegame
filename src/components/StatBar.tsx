@@ -4,16 +4,18 @@ import Link from "next/link";
 import { useGame } from "@/lib/store";
 import { money } from "@/lib/format";
 import { macroSummary } from "@/lib/game/economy";
-import { xpToNext } from "@/lib/game/progression";
+import { currentAge, xpToNext } from "@/lib/game/progression";
 
 export default function StatBar() {
   const state = useGame((s) => s.state);
   const account = useGame((s) => s.account);
   if (!state) return <header className="h-16" />;
 
-  const { stats, economy, progression } = state;
+  const { stats, economy, progression, life } = state;
   const energyPct = (stats.energy / stats.maxEnergy) * 100;
   const xpPct = (progression.xp / xpToNext(progression.level)) * 100;
+  const age = Math.floor(currentAge(life));
+  const lifePct = ((currentAge(life) - life.startAge) / (life.deathAge - life.startAge)) * 100;
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/5 bg-bg-elev/95 px-4 pb-2 pt-3 backdrop-blur">
@@ -57,6 +59,19 @@ export default function StatBar() {
         </span>
         <span>🏅 {Math.floor(stats.reputation)}</span>
         <span>🍀 {stats.luck.toFixed(0)}</span>
+        <span
+          className="flex items-center gap-1"
+          title={`Age ${age} · Gen ${life.generation} · dies at ${life.deathAge}`}
+        >
+          🎂
+          <span className="inline-block h-1.5 w-10 overflow-hidden rounded-full bg-white/10">
+            <span
+              className="block h-full bg-accent transition-all"
+              style={{ width: `${Math.min(100, lifePct)}%` }}
+            />
+          </span>
+          {age}
+        </span>
         {progression.studyingId && (
           <span className="text-accent">📚 {progression.studyTicksRemaining}s</span>
         )}

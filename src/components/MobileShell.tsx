@@ -6,6 +6,7 @@ import StatBar from "./StatBar";
 import BottomNav from "./BottomNav";
 import Toast from "./Toast";
 import OfflineModal from "./OfflineModal";
+import DeathModal from "./DeathModal";
 import AchievementPopup from "./AchievementPopup";
 
 export default function MobileShell({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
       <Toast />
       <AchievementPopup />
       <OfflineModal />
+      <DeathModal />
       <BottomNav />
     </>
   );

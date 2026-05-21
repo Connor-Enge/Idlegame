@@ -85,6 +85,7 @@ interface GameStore {
   setToast: (msg: string | null) => void;
   dismissOffline: () => void;
   dismissAchievement: () => void;
+  dismissDeath: () => void;
   applyAuth: (account: Account | null) => Promise<void>;
   resetGame: () => Promise<void>;
 }
@@ -181,6 +182,16 @@ export const useGame = create<GameStore>((set, get) => ({
   setToast: (msg) => set({ toast: msg }),
   dismissOffline: () => set({ offlineReport: null }),
   dismissAchievement: () => set({ recentAchievement: null }),
+
+  // Acknowledge a death recap: clear the report so the modal closes. The new
+  // life (legacy credits, generation bump) is already live in state.
+  dismissDeath: () => {
+    const s = get().state;
+    if (!s) return;
+    const next = { ...s, life: { ...s.life, deathReport: null } };
+    set({ state: next });
+    persistLocal(next);
+  },
 
   // Hard reset: wipe all progress (including prestige) back to a fresh start,
   // keeping the same player/account id so the server save is overwritten.

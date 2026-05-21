@@ -12,6 +12,7 @@ import type {
   EducationProgram,
   FeatureFlag,
   GameState,
+  LifeState,
   Progression,
 } from "./types";
 
@@ -130,4 +131,36 @@ export function canRetire(state: GameState): boolean {
 export function legacyGain(netWorth: number): number {
   if (netWorth < RETIRE_THRESHOLD) return 0;
   return Math.floor(10 * Math.sqrt(netWorth / 1_000_000));
+}
+
+// ---------------------------------------------------------------------------
+// Life & mortality
+// ---------------------------------------------------------------------------
+
+export const TICKS_PER_DAY = 5;
+export const TICKS_PER_YEAR = TICKS_PER_DAY * 365; // 1825 ticks = 1 year
+export const LIFE_START_AGE = 18;
+
+export function rollDeathAge(): number {
+  return 65 + Math.floor(Math.random() * 36); // 65..100 inclusive
+}
+
+export function defaultLife(): LifeState {
+  return {
+    ageTicks: 0,
+    startAge: LIFE_START_AGE,
+    deathAge: rollDeathAge(),
+    generation: 1,
+    deathReport: null,
+  };
+}
+
+export function currentAge(life: LifeState): number {
+  return life.startAge + life.ageTicks / TICKS_PER_YEAR;
+}
+
+// Legacy (retirement) credits awarded when a life ends — unlike voluntary
+// retirement there's no threshold, and every life grants at least 1.
+export function lifeCredits(netWorth: number): number {
+  return Math.max(1, Math.floor(10 * Math.sqrt(Math.max(0, netWorth) / 1_000_000)));
 }

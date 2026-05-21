@@ -352,6 +352,20 @@ export interface EconomyEvent {
 // Aggregate save state
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Life & mortality — time passes, the player ages, and eventually dies, which
+// force-retires them (net worth → legacy credits) and begins a new life.
+// ---------------------------------------------------------------------------
+
+export interface LifeState {
+  ageTicks: number; // ticks lived this life
+  startAge: number; // age at the start of this life
+  deathAge: number; // age this life ends at (rolled 65–100 at birth)
+  generation: number; // 1-based life number
+  // Set the moment the player dies so the UI can show a recap; cleared on ack.
+  deathReport: { age: number; netWorth: number; credits: number } | null;
+}
+
 export interface GameState {
   playerId: string;
   stats: PlayerStats;
@@ -363,5 +377,6 @@ export interface GameState {
   economy: EconomyState;
   assets: MarketAsset[];
   investing: InvestingState;
+  life: LifeState;
   version: number;
 }
