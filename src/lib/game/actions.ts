@@ -1,4 +1,24 @@
 import { BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
+import { PERKS, PROJECTS } from "./careerData";
+import {
+  REVIEW_COOLDOWN_TICKS,
+  TRAIN_ENERGY,
+  canNegotiate,
+  canTrain,
+  currentLevel,
+  gigById,
+  getSkillLevel,
+  perkBundle,
+  qualityFromPosition,
+  raiseChance,
+  resolveGig,
+  resolveShift,
+  rollShiftTasks,
+  trackById,
+  trainCost,
+  trainXpGain,
+  zonesForSkill,
+} from "./career";
 import { computeNetWorth, createInitialState } from "./engine";
 import { playGamble } from "./gambling";
 import {
@@ -10,13 +30,22 @@ import {
   legacyGain,
   trackUnlocked,
 } from "./progression";
-import type { GambleGame, GambleResult, GameState } from "./types";
+import type {
+  GambleGame,
+  GambleResult,
+  GameState,
+  GigResult,
+  ShiftMoment,
+  ShiftResult,
+} from "./types";
 
 export type ActionResult = {
   state: GameState;
   ok: boolean;
   message: string;
   gamble?: GambleResult;
+  shift?: ShiftResult;
+  gig?: GigResult;
 };
 
 function fail(state: GameState, message: string): ActionResult {
@@ -111,54 +140,247 @@ export function takeJob(state: GameState, trackId: string): ActionResult {
   const entry = track.levels[0];
 
   const s = clone(state);
-  // Always start at the bottom of a track — no skipping straight to executive.
-  s.career = { trackId, levelIndex: 0, shiftsWorked: 0, employedSince: Date.now() };
+  // Always start at the bottom of a track. Job-specific progress (level, shifts,
+  // performance, raises, project) resets; skills, perks and morale carry over.
+  s.career.trackId = trackId;
+  s.career.levelIndex = 0;
+  s.career.shiftsWorked = 0;
+  s.career.employedSince = Date.now();
+  s.career.performance = 0;
+  s.career.salaryMultiplier = 1;
+  s.career.activeProject = null;
+  s.career.reviewCooldownTicks = 0;
   return { state: s, ok: true, message: `Hired as ${entry.title}` };
 }
 
 export function quitJob(state: GameState): ActionResult {
   const s = clone(state);
-  s.career = { trackId: null, levelIndex: 0, shiftsWorked: 0, employedSince: null };
+  s.career.trackId = null;
+  s.career.levelIndex = 0;
+  s.career.shiftsWorked = 0;
+  s.career.employedSince = null;
+  s.career.performance = 0;
+  s.career.salaryMultiplier = 1;
+  s.career.activeProject = null;
   return { state: s, ok: true, message: "You quit. Bold." };
 }
 
-// Working a shift is the active mini-game: spend energy for an immediate
-// reputation + cash boost and progress toward promotion.
+// Apply a fully-resolved shift to the state. Shared by the timed mini-game
+// (commitShift) and the auto-resolved Quick Shift (workShift).
+function applyShift(state: GameState, result: ShiftResult): ActionResult {
+  const s = clone(state);
+  const c = s.career;
+  const track = trackById(c.trackId)!;
+  const level = track.levels[c.levelIndex];
+
+  s.stats.energy = Math.max(0, s.stats.energy - result.energyCost);
+  s.stats.cash += result.cash;
+  s.stats.reputation += result.reputation;
+  c.totalEarned += result.cash;
+  c.shiftsWorked += 1;
+  c.shiftsTotal += 1;
+  c.performance = Math.min(100, c.performance + result.performanceGain);
+  c.morale = Math.max(0, Math.min(100, c.morale + result.moraleChange));
+  c.shiftStreak = result.score >= 0.45 ? c.shiftStreak + 1 : 0;
+  c.bestShiftStreak = Math.max(c.bestShiftStreak, c.shiftStreak);
+
+  for (const [skillId, xp] of Object.entries(result.skillXp)) {
+    c.skills[skillId] = (c.skills[skillId] ?? 0) + xp;
+  }
+  grantXp(s.progression, 8 + level.tier * 3 + result.score * 6);
+
+  // Project progress / completion.
+  if (c.activeProject) {
+    c.activeProject.shiftsRemaining -= 1;
+    if (result.projectCompleted) {
+      s.stats.cash += result.projectCompleted.bonus;
+      c.totalEarned += result.projectCompleted.bonus;
+      const def = PROJECTS.find((p) => p.id === c.activeProject!.projectId);
+      if (def) {
+        s.stats.reputation += def.reputation;
+        c.skills[def.skillId] = (c.skills[def.skillId] ?? 0) + def.skillXp;
+      }
+      c.projectsCompleted += 1;
+      c.activeProject = null;
+    }
+  }
+
+  // Promotion.
+  let message = `Shift done — +$${result.cash.toLocaleString()}`;
+  if (result.promoted) {
+    c.levelIndex += 1;
+    c.shiftsWorked = 0;
+    c.performance = 40;
+    c.morale = Math.min(100, c.morale + 10);
+    message = `Promoted to ${result.newTitle}! 🎉`;
+  } else if (result.projectCompleted) {
+    message = `Project complete: ${result.projectCompleted.name} (+$${result.projectCompleted.bonus.toLocaleString()})`;
+  }
+
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message, shift: result };
+}
+
+// The interactive shift: the UI resolves each timed moment and commits the set.
+export function commitShift(state: GameState, moments: ShiftMoment[]): ActionResult {
+  if (!state.career.trackId) return fail(state, "You don't have a job");
+  const level = currentLevel(state);
+  if (!level) return fail(state, "You don't have a job");
+  const perks = perkBundle(state);
+  const energyCost = Math.max(1, level.energyCostPerShift + perks.shiftEnergy);
+  if (state.stats.energy < energyCost) return fail(state, "Too tired — rest or wait for energy");
+  const result = resolveShift(state, moments);
+  if (!result) return fail(state, "Can't work right now");
+  return applyShift(state, result);
+}
+
+// Quick Shift: auto-resolve a shift without the mini-game. Each moment's
+// quality is rolled from the relevant skill level — trained skills do better.
 export function workShift(state: GameState): ActionResult {
   if (!state.career.trackId) return fail(state, "You don't have a job");
-  const track = CAREER_TRACKS.find((t) => t.id === state.career.trackId)!;
-  const level = track.levels[state.career.levelIndex];
-  if (state.stats.energy < level.energyCostPerShift)
-    return fail(state, "Too tired — rest or wait for energy");
+  const level = currentLevel(state);
+  if (!level) return fail(state, "You don't have a job");
+  const perks = perkBundle(state);
+  const energyCost = Math.max(1, level.energyCostPerShift + perks.shiftEnergy);
+  if (state.stats.energy < energyCost) return fail(state, "Too tired — rest or wait for energy");
 
-  const s = clone(state);
-  s.stats.energy -= level.energyCostPerShift;
-  s.stats.cash += level.baseSalaryPerTick * 8; // a shift pays a burst
-  s.stats.reputation += 5;
-  s.career.shiftsWorked += 1;
-  grantXp(s.progression, 8 + level.tier * 3);
-  s.stats.netWorth = computeNetWorth(s);
-
-  let message = `Worked a shift as ${level.title}. +$${level.baseSalaryPerTick * 8}`;
-
-  // Offer promotion automatically when eligible.
-  const next = track.levels[s.career.levelIndex + 1];
-  if (
-    next &&
-    s.career.shiftsWorked >= level.promoteAfterShifts &&
-    s.stats.reputation >= next.reputationRequired
-  ) {
-    s.career.levelIndex += 1;
-    s.career.shiftsWorked = 0;
-    message = `Promoted to ${next.title}! 🎉`;
-  }
-  return { state: s, ok: true, message };
+  const tasks = rollShiftTasks(state.career.trackId);
+  const moments: ShiftMoment[] = tasks.map((task) => {
+    const lvl = getSkillLevel(state, task.skillId);
+    const zones = zonesForSkill(lvl);
+    // Simulate a stop near center, jittered. Better skill → tighter aim.
+    const spread = 26 - lvl * 0.7;
+    const pos = 50 + (Math.random() - 0.5) * 2 * spread;
+    return { taskId: task.id, skillId: task.skillId, quality: qualityFromPosition(pos, zones) };
+  });
+  const result = resolveShift(state, moments);
+  if (!result) return fail(state, "Can't work right now");
+  return applyShift(state, result);
 }
 
 export function rest(state: GameState): ActionResult {
   const s = clone(state);
   s.stats.energy = s.stats.maxEnergy;
+  s.career.morale = Math.min(100, s.career.morale + 6);
   return { state: s, ok: true, message: "Rested. Energy full." };
+}
+
+// --------------------------- Side gigs ---------------------------
+
+export function commitGig(state: GameState, gigId: string, position: number): ActionResult {
+  const gig = gigById(gigId);
+  if (!gig) return fail(state, "Unknown gig");
+  if (state.progression.level < gig.levelRequired)
+    return fail(state, `Unlocks at level ${gig.levelRequired}`);
+  if (state.career.gigCooldownTicks > 0) return fail(state, "Gig on cooldown");
+  if (state.stats.energy < gig.energyCost) return fail(state, "Too tired for a gig");
+
+  const lvl = getSkillLevel(state, gig.skillId);
+  const zones = zonesForSkill(lvl);
+  const quality = qualityFromPosition(position, zones);
+  const result = resolveGig(state, gigId, quality);
+  if (!result) return fail(state, "Gig failed");
+
+  const s = clone(state);
+  const perks = perkBundle(s);
+  s.stats.energy = Math.max(0, s.stats.energy - result.energyCost);
+  s.stats.cash += result.cash;
+  s.stats.reputation += result.reputation;
+  s.career.skills[result.skillId] = (s.career.skills[result.skillId] ?? 0) + result.skillXp;
+  s.career.totalEarned += result.cash;
+  s.career.gigsCompleted += 1;
+  s.career.gigCooldownTicks = Math.round(gig.cooldownTicks * perks.gigCooldownMult);
+  grantXp(s.progression, 5 + Math.min(12, Math.log10(result.cash + 1) * 3));
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `${gig.name}: +$${result.cash.toLocaleString()}`, gig: result };
+}
+
+// --------------------------- Skill training ---------------------------
+
+export function trainSkill(state: GameState, skillId: string): ActionResult {
+  const gate = canTrain(state, skillId);
+  if (!gate.ok) return fail(state, gate.reason ?? "Can't train");
+  const lvl = getSkillLevel(state, skillId);
+  const cost = trainCost(lvl);
+  const perks = perkBundle(state);
+
+  const s = clone(state);
+  s.stats.cash -= cost;
+  s.stats.energy = Math.max(0, s.stats.energy - TRAIN_ENERGY);
+  s.career.skills[skillId] = (s.career.skills[skillId] ?? 0) + trainXpGain(lvl) * perks.skillXpMult;
+  grantXp(s.progression, 6);
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: "Skill trained" };
+}
+
+// --------------------------- Raises / reviews ---------------------------
+
+export function negotiateRaise(state: GameState): ActionResult {
+  const gate = canNegotiate(state);
+  if (!gate.ok) return fail(state, gate.reason ?? "Can't negotiate");
+
+  const s = clone(state);
+  const chance = raiseChance(s);
+  s.career.reviewCooldownTicks = REVIEW_COOLDOWN_TICKS;
+  if (Math.random() < chance) {
+    s.career.salaryMultiplier += 0.15;
+    s.career.raisesNegotiated += 1;
+    s.career.morale = Math.min(100, s.career.morale + 8);
+    s.career.performance = Math.max(0, s.career.performance - 20);
+    grantXp(s.progression, 25);
+    return {
+      state: s,
+      ok: true,
+      message: `Raise approved! Salary ×${s.career.salaryMultiplier.toFixed(2)} 🎉`,
+    };
+  }
+  s.career.morale = Math.max(0, s.career.morale - 10);
+  s.stats.reputation = Math.max(0, s.stats.reputation - 3);
+  return { state: s, ok: true, message: "Raise denied. Build more performance." };
+}
+
+// --------------------------- Perks ---------------------------
+
+export function buyPerk(state: GameState, perkId: string): ActionResult {
+  const perk = PERKS.find((p) => p.id === perkId);
+  if (!perk) return fail(state, "Unknown perk");
+  if (state.career.perks.includes(perkId)) return fail(state, "Already owned");
+  if (state.progression.level < perk.levelRequired)
+    return fail(state, `Unlocks at level ${perk.levelRequired}`);
+  if (state.stats.cash < perk.cost) return fail(state, "Not enough cash");
+
+  const s = clone(state);
+  s.stats.cash -= perk.cost;
+  s.career.perks.push(perkId);
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `Unlocked: ${perk.name}` };
+}
+
+// --------------------------- Projects ---------------------------
+
+export function acceptProject(state: GameState, projectId: string): ActionResult {
+  if (!state.career.trackId) return fail(state, "Get a job first");
+  if (state.career.activeProject) return fail(state, "Finish your current project first");
+  const def = PROJECTS.find((p) => p.id === projectId);
+  if (!def) return fail(state, "Unknown project");
+  if (state.progression.level < def.levelRequired)
+    return fail(state, `Unlocks at level ${def.levelRequired}`);
+
+  const s = clone(state);
+  s.career.activeProject = {
+    projectId,
+    shiftsRemaining: def.shifts,
+    totalShifts: def.shifts,
+  };
+  return { state: s, ok: true, message: `Accepted: ${def.name}` };
+}
+
+export function abandonProject(state: GameState): ActionResult {
+  if (!state.career.activeProject) return fail(state, "No active project");
+  const s = clone(state);
+  s.career.activeProject = null;
+  s.career.morale = Math.max(0, s.career.morale - 8);
+  return { state: s, ok: true, message: "Project abandoned" };
 }
 
 // --------------------------- Real estate ---------------------------

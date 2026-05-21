@@ -6,6 +6,22 @@ function topTier(state: GameState): number {
   return track ? track.levels[state.career.levelIndex].tier : -1;
 }
 
+function maxSkillLevel(state: GameState): number {
+  const skills = state.career.skills ?? {};
+  let best = 0;
+  for (const xp of Object.values(skills)) {
+    // Mirror career.ts skill curve without importing it (avoids a cycle).
+    let level = 0;
+    let remaining = xp;
+    while (level < 20 && remaining >= Math.floor(50 * Math.pow(1.22, level))) {
+      remaining -= Math.floor(50 * Math.pow(1.22, level));
+      level += 1;
+    }
+    if (level > best) best = level;
+  }
+  return best;
+}
+
 // Goals span the whole arc, from first paycheck to multi-retirement tycoon.
 // Rewards are deliberately small relative to the milestone — flavor, not a
 // shortcut. Ordering here is the display order on the Goals screen.
@@ -16,7 +32,13 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "investor", name: "Investor", description: "Open your first market position.", icon: "📈", tier: "bronze", check: (s) => s.holdings.length > 0, reward: { cash: 500 } },
   { id: "ten-k", name: "Five Figures", description: "Reach $10,000 net worth.", icon: "💵", tier: "bronze", check: (s) => s.stats.netWorth >= 10_000 },
 
+  { id: "first-gig", name: "Side Hustle", description: "Complete your first side gig.", icon: "🛵", tier: "bronze", check: (s) => (s.career.gigsCompleted ?? 0) >= 1, reward: { cash: 150 } },
+  { id: "first-shift", name: "Clocked In", description: "Work 10 shifts in total.", icon: "⏰", tier: "bronze", check: (s) => (s.career.shiftsTotal ?? 0) >= 10 },
+
   { id: "degree", name: "Higher Education", description: "Earn a College Degree.", icon: "🏛️", tier: "silver", check: (s) => s.progression.credentials.includes("degree"), reward: { cash: 5_000 } },
+  { id: "skilled", name: "Skilled Up", description: "Reach skill level 8 in any skill.", icon: "🎯", tier: "silver", check: (s) => maxSkillLevel(s) >= 8, reward: { cash: 3_000 } },
+  { id: "first-raise", name: "Worth More", description: "Negotiate a successful raise.", icon: "🤝", tier: "silver", check: (s) => (s.career.raisesNegotiated ?? 0) >= 1, reward: { cash: 2_000 } },
+  { id: "project-done", name: "Delivered", description: "Complete a workplace project.", icon: "📦", tier: "silver", check: (s) => (s.career.projectsCompleted ?? 0) >= 3, reward: { cash: 4_000 } },
   { id: "entrepreneur", name: "Entrepreneur", description: "Found your first business.", icon: "🏢", tier: "silver", check: (s) => s.businesses.length > 0, reward: { cash: 2_000 } },
   { id: "landlord", name: "Landlord", description: "Buy your first property.", icon: "🏠", tier: "silver", check: (s) => s.properties.length > 0, reward: { cash: 2_000 } },
   { id: "level-10", name: "Seasoned", description: "Reach level 10.", icon: "⭐", tier: "silver", check: (s) => s.progression.level >= 10, reward: { luck: 5 } },
@@ -24,6 +46,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "diversified", name: "Diversified", description: "Hold 5 different assets.", icon: "🧺", tier: "silver", check: (s) => s.holdings.length >= 5 },
 
   { id: "executive", name: "Corner Office", description: "Reach a tier-4 career role.", icon: "🕴️", tier: "gold", check: (s) => topTier(s) >= 4, reward: { cash: 25_000 } },
+  { id: "expert", name: "Expert", description: "Max out any skill (level 20).", icon: "🏆", tier: "gold", check: (s) => maxSkillLevel(s) >= 20, reward: { cash: 100_000 } },
+  { id: "gig-grind", name: "Gig Economy", description: "Complete 50 side gigs.", icon: "💪", tier: "gold", check: (s) => (s.career.gigsCompleted ?? 0) >= 50, reward: { luck: 5 } },
   { id: "mogul", name: "Property Mogul", description: "Own 5 properties.", icon: "🏘️", tier: "gold", check: (s) => s.properties.length >= 5, reward: { cash: 50_000 } },
   { id: "millionaire", name: "Millionaire", description: "Reach $1,000,000 net worth.", icon: "🤑", tier: "gold", check: (s) => s.stats.netWorth >= 1_000_000 },
   { id: "scholar", name: "Overqualified", description: "Earn 4 credentials.", icon: "📚", tier: "gold", check: (s) => s.progression.credentials.length >= 4, reward: { luck: 10 } },

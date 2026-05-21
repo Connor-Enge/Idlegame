@@ -12,7 +12,7 @@ Built with **Next.js (App Router) + TypeScript + Tailwind CSS v4**, persisted to
 | Area | Where | What's in |
 | --- | --- | --- |
 | 🎰 Gambling | `/gambling` | Coin flip, dice, slots, roulette — each with a built-in house edge |
-| 💼 Jobs & corporate ladder | `/jobs` | Career tracks, work-shift mini-game, energy, promotions |
+| 💼 Career | `/jobs` | Timed shift mini-game, 6 trainable skills, side gigs, projects, raises, perks, education, the corporate ladder |
 | 📈 Investing | `/invest` | Stocks, crypto, commodities, bonds priced live by the economy |
 | 🌍 Global economy | `/economy` | Business-cycle phases, macro indicators, random events |
 | 🏘️ Real estate | `/realestate` | Buy with cash or mortgage, rent out, value drifts with the market |
