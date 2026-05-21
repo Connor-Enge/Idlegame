@@ -1,10 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "./index";
+import { ensureSchema } from "./ensure";
 import { players } from "./schema";
 import { createInitialState } from "@/lib/game/engine";
 import type { GameState } from "@/lib/game/types";
 
 export async function loadOrCreatePlayer(playerId: string): Promise<GameState> {
+  await ensureSchema();
   const rows = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
   if (rows.length > 0) return rows[0].state;
 
@@ -19,6 +21,7 @@ export async function loadOrCreatePlayer(playerId: string): Promise<GameState> {
 }
 
 export async function savePlayer(state: GameState): Promise<void> {
+  await ensureSchema();
   await db
     .insert(players)
     .values({
@@ -40,6 +43,7 @@ export async function savePlayer(state: GameState): Promise<void> {
 }
 
 export async function leaderboard(limit = 25) {
+  await ensureSchema();
   return db
     .select({
       id: players.id,
