@@ -36,7 +36,7 @@ export default function Dice() {
         setMarker(res.outcome!.diceRoll!);
         setRolling(false);
         setResult(res);
-        run(commitGamble(state, res));
+        run(commitGamble(state, res), { silent: true });
       }
     }, 90);
   }

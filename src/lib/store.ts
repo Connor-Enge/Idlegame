@@ -79,7 +79,7 @@ interface GameStore {
 
   init: () => void;
   setState: (s: GameState) => void;
-  run: (result: actions.ActionResult) => void;
+  run: (result: actions.ActionResult, opts?: { silent?: boolean }) => void;
   tick: () => void;
   save: () => Promise<void>;
   setToast: (msg: string | null) => void;
@@ -138,11 +138,13 @@ export const useGame = create<GameStore>((set, get) => ({
 
   setState: (s) => set({ state: s }),
 
-  run: (result) => {
+  run: (result, opts) => {
     const newly = evaluateAchievements(result.state);
+    // Casino games render their own in-view result, so they commit silently —
+    // only achievement toasts still surface. Other actions keep their toast.
     set({
       state: result.state,
-      toast: newly[0] ? `🏆 ${newly[0].name}` : result.message,
+      toast: newly[0] ? `🏆 ${newly[0].name}` : opts?.silent ? null : result.message,
       lastGamble: result.gamble ?? get().lastGamble,
       recentAchievement: newly[0] ?? get().recentAchievement,
     });

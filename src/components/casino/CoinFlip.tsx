@@ -33,7 +33,7 @@ export default function CoinFlip() {
     setTimeout(() => {
       setSpinning(false);
       setResult(res);
-      run(commitGamble(state, res));
+      run(commitGamble(state, res), { silent: true });
     }, 2500);
   }
 

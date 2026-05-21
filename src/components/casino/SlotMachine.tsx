@@ -156,6 +156,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         won: payout > 0,
         detail: `${game.name}${result.note ? " — " + result.note : ""}`,
       }),
+      { silent: true },
     );
     const tier = winTier(result.totalMult);
     if (result.note) showFeature(result.note);

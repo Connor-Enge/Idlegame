@@ -101,6 +101,7 @@ export default function Blackjack() {
         won: out === "win" || out === "blackjack",
         detail: outcomeLabel(out),
       }),
+      { silent: true },
     );
   }
 
