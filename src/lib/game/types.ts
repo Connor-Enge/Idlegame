@@ -207,12 +207,63 @@ export interface MarketAsset {
   sector: string;
   unlockLevel?: number; // hidden until the player reaches this level
   requiresCredential?: string; // e.g. derivatives gated behind a license
+  // Presentation / flavor (Robinhood-style detail screens).
+  logo?: string; // emoji used as a stand-in for a company logo
+  blurb?: string; // "About" copy on the detail screen
+  dividendYield?: number; // annual % yield; pays a small trickle each tick
+  popular?: boolean; // surfaces in the "Popular" list
+  // Rolling price history for charts/sparklines (most-recent last).
+  history?: number[];
 }
 
 export interface Holding {
   assetId: AssetId;
   quantity: number;
   avgCost: number;
+}
+
+// ---------------------------------------------------------------------------
+// Brokerage layer — the Robinhood-style investing experience
+// ---------------------------------------------------------------------------
+
+export interface WatchList {
+  id: string;
+  name: string;
+  assetIds: AssetId[];
+}
+
+// A resting buy/sell order that fills automatically when price crosses the
+// trigger. "limit" buys below / sells above; "stop" is the mirror image.
+export interface LimitOrder {
+  id: string;
+  assetId: AssetId;
+  side: "buy" | "sell";
+  trigger: "limit" | "stop";
+  price: number; // trigger price
+  shares: number;
+  createdAt: number;
+}
+
+// Recurring (dollar-cost-averaging) buy, executed on a tick cadence.
+export interface RecurringPlan {
+  id: string;
+  assetId: AssetId;
+  amount: number; // dollars per cycle
+  everyTicks: number;
+  nextTick: number; // economy.tick at which the next buy fires
+}
+
+export interface InvestingState {
+  portfolioHistory: number[]; // total investments value over time
+  watchlists: WatchList[];
+  orders: LimitOrder[];
+  recurring: RecurringPlan[];
+  gold: boolean; // Robinhood Gold subscription active
+  goldSince: number | null;
+  marginUsed: number; // borrowed dollars outstanding (Gold margin)
+  realizedPL: number; // lifetime realized profit/loss
+  dividendsEarned: number; // lifetime dividends collected
+  tradeCount: number; // lifetime filled buys + sells
 }
 
 // ---------------------------------------------------------------------------
@@ -308,5 +359,6 @@ export interface GameState {
   businesses: OwnedBusiness[];
   economy: EconomyState;
   assets: MarketAsset[];
+  investing: InvestingState;
   version: number;
 }

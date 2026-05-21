@@ -21,6 +21,7 @@ import {
 } from "./career";
 import { computeNetWorth, createInitialState } from "./engine";
 import { playGamble } from "./gambling";
+import { buyingPower, settleBuy, settleSell } from "./investing";
 import {
   canRetire,
   canStartStudy,
@@ -54,48 +55,182 @@ function fail(state: GameState, message: string): ActionResult {
 
 // --------------------------- Investing ---------------------------
 
+// Shared gating: brokerage unlocked, asset exists/visible, credential held.
+type Gate =
+  | { ok: false; error: string }
+  | { ok: true; asset: import("./types").MarketAsset };
+
+function tradableAsset(state: GameState, assetId: string): Gate {
+  if (!hasFeature(state, "invest")) return { ok: false, error: "Brokerage access locked" };
+  const asset = state.assets.find((a) => a.id === assetId);
+  if (!asset) return { ok: false, error: "Unknown asset" };
+  if (asset.unlockLevel && state.progression.level < asset.unlockLevel)
+    return { ok: false, error: `Unlocks at level ${asset.unlockLevel}` };
+  if (asset.requiresCredential && !state.progression.credentials.includes(asset.requiresCredential))
+    return { ok: false, error: `Requires ${educationById(asset.requiresCredential)?.short ?? "a license"}` };
+  return { ok: true, asset };
+}
+
 export function buyAsset(state: GameState, assetId: string, quantity: number): ActionResult {
   if (quantity <= 0) return fail(state, "Quantity must be positive");
-  if (!hasFeature(state, "invest")) return fail(state, "Brokerage access locked");
-  const asset = state.assets.find((a) => a.id === assetId);
-  if (!asset) return fail(state, "Unknown asset");
-  if (asset.unlockLevel && state.progression.level < asset.unlockLevel)
-    return fail(state, `Unlocks at level ${asset.unlockLevel}`);
-  if (asset.requiresCredential && !state.progression.credentials.includes(asset.requiresCredential))
-    return fail(state, `Requires ${educationById(asset.requiresCredential)?.short ?? "a license"}`);
-  const cost = asset.price * quantity;
-  if (cost > state.stats.cash) return fail(state, "Not enough cash");
+  const gate = tradableAsset(state, assetId);
+  if (!gate.ok) return fail(state, gate.error);
+  if (gate.asset.price * quantity > buyingPower(state)) return fail(state, "Not enough buying power");
 
   const s = clone(state);
-  s.stats.cash -= cost;
-  const existing = s.holdings.find((h) => h.assetId === assetId);
-  if (existing) {
-    const totalQty = existing.quantity + quantity;
-    existing.avgCost = (existing.avgCost * existing.quantity + cost) / totalQty;
-    existing.quantity = totalQty;
-  } else {
-    s.holdings.push({ assetId, quantity, avgCost: asset.price });
-  }
+  if (!settleBuy(s, assetId, quantity)) return fail(state, "Not enough buying power");
   s.stats.netWorth = computeNetWorth(s);
-  return { state: s, ok: true, message: `Bought ${quantity} ${asset.symbol}` };
+  return { state: s, ok: true, message: `Bought ${trim(quantity)} ${gate.asset.symbol}` };
+}
+
+// Robinhood's default: buy a dollar amount, get fractional shares.
+export function buyAssetDollars(state: GameState, assetId: string, dollars: number): ActionResult {
+  if (dollars <= 0) return fail(state, "Amount must be positive");
+  const gate = tradableAsset(state, assetId);
+  if (!gate.ok) return fail(state, gate.error);
+  if (dollars > buyingPower(state)) return fail(state, "Not enough buying power");
+  const shares = dollars / gate.asset.price;
+
+  const s = clone(state);
+  if (!settleBuy(s, assetId, shares)) return fail(state, "Not enough buying power");
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `Bought ${money(dollars)} of ${gate.asset.symbol}` };
 }
 
 export function sellAsset(state: GameState, assetId: string, quantity: number): ActionResult {
   const asset = state.assets.find((a) => a.id === assetId);
   if (!asset) return fail(state, "Unknown asset");
-  const holding = state.holdings.find((h) => h.assetId === assetId);
-  if (!holding || holding.quantity < quantity) return fail(state, "Not enough shares");
 
   const s = clone(state);
-  const h = s.holdings.find((x) => x.assetId === assetId)!;
-  const profit = (asset.price - h.avgCost) * quantity;
-  h.quantity -= quantity;
-  s.stats.cash += asset.price * quantity;
-  if (h.quantity <= 0) s.holdings = s.holdings.filter((x) => x.assetId !== assetId);
+  const profit = settleSell(s, assetId, quantity);
+  if (profit == null) return fail(state, "Not enough shares");
   // Realized gains grant XP; selling at a loss teaches nothing.
   if (profit > 0) grantXp(s.progression, Math.min(30, Math.log10(profit + 1) * 6));
   s.stats.netWorth = computeNetWorth(s);
-  return { state: s, ok: true, message: `Sold ${quantity} ${asset.symbol}` };
+  return { state: s, ok: true, message: `Sold ${trim(quantity)} ${asset.symbol}` };
+}
+
+// Sell a dollar amount of a position (converted to fractional shares).
+export function sellAssetDollars(state: GameState, assetId: string, dollars: number): ActionResult {
+  const asset = state.assets.find((a) => a.id === assetId);
+  if (!asset) return fail(state, "Unknown asset");
+  if (dollars <= 0) return fail(state, "Amount must be positive");
+  const holding = state.holdings.find((h) => h.assetId === assetId);
+  if (!holding) return fail(state, "No position to sell");
+  const shares = Math.min(holding.quantity, dollars / asset.price);
+  return sellAsset(state, assetId, shares);
+}
+
+// --------------------------- Resting orders ---------------------------
+
+export function placeOrder(
+  state: GameState,
+  assetId: string,
+  side: "buy" | "sell",
+  trigger: "limit" | "stop",
+  price: number,
+  shares: number,
+): ActionResult {
+  if (price <= 0 || shares <= 0) return fail(state, "Enter a valid price and quantity");
+  const gate = tradableAsset(state, assetId);
+  if (!gate.ok) return fail(state, gate.error);
+  if (side === "sell") {
+    const holding = state.holdings.find((h) => h.assetId === assetId);
+    if (!holding || holding.quantity < shares) return fail(state, "Not enough shares to sell");
+  }
+  const s = clone(state);
+  s.investing.orders.push({
+    id: rid(),
+    assetId,
+    side,
+    trigger,
+    price,
+    shares,
+    createdAt: Date.now(),
+  });
+  return { state: s, ok: true, message: `${cap(trigger)} ${side} order placed` };
+}
+
+export function cancelOrder(state: GameState, orderId: string): ActionResult {
+  const s = clone(state);
+  s.investing.orders = s.investing.orders.filter((o) => o.id !== orderId);
+  return { state: s, ok: true, message: "Order canceled" };
+}
+
+// --------------------------- Recurring (DCA) ---------------------------
+
+export function addRecurring(
+  state: GameState,
+  assetId: string,
+  amount: number,
+  everyTicks: number,
+): ActionResult {
+  if (amount <= 0) return fail(state, "Amount must be positive");
+  const gate = tradableAsset(state, assetId);
+  if (!gate.ok) return fail(state, gate.error);
+  const s = clone(state);
+  s.investing.recurring.push({
+    id: rid(),
+    assetId,
+    amount,
+    everyTicks: Math.max(5, Math.floor(everyTicks)),
+    nextTick: s.economy.tick + Math.max(5, Math.floor(everyTicks)),
+  });
+  return { state: s, ok: true, message: `Recurring buy set up for ${gate.asset.symbol}` };
+}
+
+export function cancelRecurring(state: GameState, planId: string): ActionResult {
+  const s = clone(state);
+  s.investing.recurring = s.investing.recurring.filter((p) => p.id !== planId);
+  return { state: s, ok: true, message: "Recurring buy canceled" };
+}
+
+// --------------------------- Watchlist ---------------------------
+
+export function toggleWatch(state: GameState, assetId: string, listId = "default"): ActionResult {
+  const s = clone(state);
+  let list = s.investing.watchlists.find((w) => w.id === listId);
+  if (!list) {
+    list = { id: listId, name: "My First List", assetIds: [] };
+    s.investing.watchlists.push(list);
+  }
+  const had = list.assetIds.includes(assetId);
+  list.assetIds = had ? list.assetIds.filter((id) => id !== assetId) : [...list.assetIds, assetId];
+  return { state: s, ok: true, message: had ? "Removed from list" : "Added to list" };
+}
+
+// --------------------------- Robinhood Gold ---------------------------
+
+export function subscribeGold(state: GameState): ActionResult {
+  if (!hasFeature(state, "invest")) return fail(state, "Brokerage access locked");
+  if (state.investing.gold) return fail(state, "Gold already active");
+  const s = clone(state);
+  s.investing.gold = true;
+  s.investing.goldSince = Date.now();
+  grantXp(s.progression, 25);
+  return { state: s, ok: true, message: "Robinhood Gold activated ✨" };
+}
+
+export function cancelGold(state: GameState): ActionResult {
+  if (state.investing.marginUsed > 0)
+    return fail(state, "Repay your margin balance before canceling Gold");
+  const s = clone(state);
+  s.investing.gold = false;
+  s.investing.goldSince = null;
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: "Gold canceled" };
+}
+
+// Pay down margin debt from cash.
+export function repayMargin(state: GameState, amount: number): ActionResult {
+  if (amount <= 0) return fail(state, "Amount must be positive");
+  const pay = Math.min(amount, state.stats.cash, state.investing.marginUsed);
+  if (pay <= 0) return fail(state, "Nothing to repay");
+  const s = clone(state);
+  s.stats.cash -= pay;
+  s.investing.marginUsed -= pay;
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `Repaid ${money(pay)} of margin` };
 }
 
 // --------------------------- Gambling ---------------------------
@@ -525,4 +660,21 @@ export function retire(state: GameState): ActionResult {
 
 function clone<T>(v: T): T {
   return typeof structuredClone === "function" ? structuredClone(v) : JSON.parse(JSON.stringify(v));
+}
+
+function rid(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Trim share counts for messages: whole numbers stay whole, fractions show 4dp.
+function trim(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/0+$/, "");
+}
+
+function money(n: number): string {
+  return "$" + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
