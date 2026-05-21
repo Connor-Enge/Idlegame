@@ -33,7 +33,9 @@ export default function CoinFlip() {
     setTimeout(() => {
       setSpinning(false);
       setResult(res);
-      run(commitGamble(state, res), { silent: true });
+      // Commit from the LIVE store state — the tick loop updates cash/economy
+      // during the 2.5s animation, so the captured `state` is stale.
+      run(commitGamble(useGame.getState().state!, res), { silent: true });
     }, 2500);
   }
 

@@ -36,7 +36,8 @@ export default function Dice() {
         setMarker(res.outcome!.diceRoll!);
         setRolling(false);
         setResult(res);
-        run(commitGamble(state, res), { silent: true });
+        // Commit from the live store state (tick loop runs during the roll).
+        run(commitGamble(useGame.getState().state!, res), { silent: true });
       }
     }, 90);
   }

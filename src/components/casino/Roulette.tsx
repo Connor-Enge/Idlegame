@@ -76,7 +76,8 @@ export default function Roulette() {
     setTimeout(() => {
       setSpinning(false);
       setResult(res);
-      run(commitGamble(state, res), { silent: true });
+      // Commit from the live store state (tick loop runs during the ~4.6s spin).
+      run(commitGamble(useGame.getState().state!, res), { silent: true });
     }, 4600);
   }
 

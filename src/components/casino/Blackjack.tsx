@@ -57,16 +57,19 @@ export default function Blackjack() {
   }
 
   function hit() {
+    if (phase !== "player") return;
     const p = [...player, draw()];
     setPlayer(p);
     if (isBust(p)) finish(p, dealer, doubled ? wager * 2 : wager);
   }
 
   function stand() {
+    if (phase !== "player") return;
     dealerTurn(player, doubled ? wager * 2 : wager);
   }
 
   function double() {
+    if (phase !== "player" || player.length !== 2) return;
     const staked = wager * 2;
     if (staked > cash) return;
     setDoubled(true);
@@ -93,7 +96,7 @@ export default function Blackjack() {
     const mult = payoutMultiplier(out);
     const payout = Math.floor(staked * mult);
     run(
-      commitGamble(state, {
+      commitGamble(useGame.getState().state!, {
         game: "blackjack",
         wager: staked,
         payout,
