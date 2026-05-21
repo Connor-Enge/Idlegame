@@ -175,7 +175,7 @@ const CAL: Record<string, number> = {
   scatter: 0.0094,
   megaways: 0.0224,
   cluster: 3.22,
-  holdwin: 1.01,
+  holdwin: 0.49,
   cascade: 0.0874,
   book: 0.181,
   jackpot: 1.64,
@@ -577,12 +577,18 @@ const holdwin: SlotGame = (() => {
   const blank = "▫️";
   const syms = ["🔔", "🍀", "💵", "💎", C, blank];
   const weights = [20, 18, 14, 8, 10, 30];
-  const coinValue = () => {
-    const r = Math.random();
-    if (r < 0.6) return 1;
-    if (r < 0.85) return 2;
-    if (r < 0.96) return 5;
-    return 15;
+  // Each coin carries a value; rarely it's a jackpot coin (Big Bass style).
+  const makeCoin = (): { v: number; label: string } => {
+    if (Math.random() < 0.985) {
+      const x = Math.random();
+      const v = x < 0.6 ? 1 : x < 0.85 ? 2 : x < 0.96 ? 5 : 15;
+      return { v, label: `${v}×` };
+    }
+    const j = Math.random();
+    if (j < 0.6) return { v: 20, label: "MINI" };
+    if (j < 0.85) return { v: 50, label: "MINOR" };
+    if (j < 0.97) return { v: 150, label: "MAJOR" };
+    return { v: 500, label: "GRAND" };
   };
   const COLS = 5;
   const ROWS = 4;
@@ -592,48 +598,45 @@ const holdwin: SlotGame = (() => {
     name: "Coin Vault",
     style: "Hold & Win",
     icon: "🪙",
-    blurb: "Collect 6+ coins to trigger respins.",
+    blurb: "Collect 6+ coins; values & jackpot coins lock for respins.",
     symbols: syms,
     cols: COLS,
     spin: () => {
       const grid = genGrid(COLS, ROWS, syms, weights);
       const frames: Frame[] = [];
-      const coinVals = new Map<string, number>();
-      const hl: string[] = [];
+      const coins = new Map<string, { v: number; label: string }>();
       for (let c = 0; c < COLS; c++)
         for (let r = 0; r < ROWS; r++)
-          if (grid[c][r] === C) {
-            coinVals.set(key(c, r), coinValue());
-            hl.push(key(c, r));
-          }
-      frames.push({ grid, highlights: hl, label: `${coinVals.size} coins` });
-      if (coinVals.size < 6) return { frames, totalMult: 0 };
+          if (grid[c][r] === C) coins.set(key(c, r), makeCoin());
+      const overlaysOf = () => Object.fromEntries([...coins].map(([k, info]) => [k, info.label]));
+      frames.push({ grid, highlights: [...coins.keys()], overlays: overlaysOf(), label: `${coins.size} coins` });
+      if (coins.size < 6) return { frames, totalMult: 0 };
 
+      // Hold & Win: lock coins, 3 respins that reset whenever a new coin lands.
       let respins = 3;
-      const locked = new Map<string, number>(coinVals);
-      const board = grid.map((col, c) => col.map((_, r) => (locked.has(key(c, r)) ? C : blank)));
-      while (respins > 0 && locked.size < CELLS) {
+      const board = grid.map((col, c) => col.map((_, r) => (coins.has(key(c, r)) ? C : blank)));
+      while (respins > 0 && coins.size < CELLS) {
         respins--;
         let newCoin = false;
         for (let c = 0; c < COLS; c++)
           for (let r = 0; r < ROWS; r++) {
             const k = key(c, r);
-            if (locked.has(k)) continue;
+            if (coins.has(k)) continue;
             if (Math.random() < 0.16) {
-              locked.set(k, coinValue());
+              coins.set(k, makeCoin());
               board[c][r] = C;
               newCoin = true;
             }
           }
         if (newCoin) respins = 3;
-        frames.push({ grid: board.map((c) => [...c]), highlights: [...locked.keys()], label: `Respin · ${respins} left` });
+        frames.push({ grid: board.map((c) => [...c]), highlights: [...coins.keys()], overlays: overlaysOf(), label: `Respin · ${respins} left` });
       }
 
       let total = 0;
-      for (const v of locked.values()) total += v;
+      for (const info of coins.values()) total += info.v;
       let note: string | undefined;
-      if (locked.size >= CELLS) {
-        total *= 5;
+      if (coins.size >= CELLS) {
+        total += 500; // full board awards the Grand
         note = "GRAND JACKPOT — full board!";
       }
       return { frames, totalMult: cap(total * CAL.holdwin), note };

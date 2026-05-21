@@ -9,6 +9,7 @@ export interface Frame {
   highlights?: string[]; // "col,row" cells to flash
   label?: string; // e.g. "Cascade ×3", "Respin 2", "Free spin 4/8"
   win?: number; // payout multiplier credited on this frame
+  overlays?: Record<string, string>; // "col,row" -> badge text (e.g. coin values)
 }
 
 export interface SpinResult {

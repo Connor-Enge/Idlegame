@@ -46,6 +46,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const [featInc, setFeatInc] = useState(false);
   const [reveal, setReveal] = useState({ seq: 0, drop: false });
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
+  const [overlays, setOverlays] = useState<Record<string, string>>({});
   const [exploding, setExploding] = useState<Set<string>>(new Set());
   const [feature, setFeature] = useState<{ text: string; seq: number } | null>(null);
   const [ways, setWays] = useState<number | null>(null);
@@ -89,6 +90,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setDisplayWin(0);
     setHighlights(new Set());
     setExploding(new Set());
+    setOverlays({});
     setFeature(null);
 
     const result = game.spin(wager, state.stats.luck);
@@ -108,6 +110,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
     // Land on the static grid (no drop — the reels already placed the symbols).
     setGrid(target.map((c) => c.slice()));
+    setOverlays(result.frames[0].overlays ?? {});
     setReveal((s) => ({ seq: s.seq + 1, drop: false }));
     setMode("grid");
     await sleep(140);
@@ -127,6 +130,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         setExploding(new Set());
         setHighlights(new Set());
         setGrid(frame.grid.map((c) => c.slice()));
+        setOverlays(frame.overlays ?? {});
         setReveal((s) => ({ seq: s.seq + 1, drop: true }));
         await sleep(470);
         if (cancelled.current) return;
@@ -220,10 +224,11 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                       const on = highlights.has(k);
                       const boom = exploding.has(k);
                       const dim = highlights.size > 0 && !on;
+                      const badge = overlays[k];
                       return (
                         <div
                           key={`${r}-${reveal.seq}`}
-                          className={`flex items-center justify-center rounded-md ${reveal.drop ? "slot-drop" : ""}`}
+                          className={`relative flex items-center justify-center rounded-md ${reveal.drop ? "slot-drop" : ""}`}
                           style={{
                             width: cs,
                             height: cs,
@@ -241,6 +246,14 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                           >
                             {sym}
                           </span>
+                          {badge && (
+                            <span
+                              className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/4 rounded px-1 text-[9px] font-black leading-tight"
+                              style={{ background: theme.accent, color: theme.accentText, fontSize: Math.max(8, cs * 0.2) }}
+                            >
+                              {badge}
+                            </span>
+                          )}
                         </div>
                       );
                     })}
