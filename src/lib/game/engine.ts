@@ -1,5 +1,6 @@
 import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
 import { initialEconomy, stepAssetPrice, stepEconomy } from "./economy";
+import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
 import { defaultProgression, grantXp, incomeMultiplier, refreshUnlocks } from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
@@ -25,7 +26,8 @@ export function createInitialState(playerId: string): GameState {
     properties: [],
     businesses: [],
     economy: initialEconomy(),
-    assets: BASE_ASSETS.map((a) => ({ ...a })),
+    assets: BASE_ASSETS.map((a) => ensureHistory({ ...a })),
+    investing: defaultInvesting(),
     version: STATE_VERSION,
   };
 }
@@ -49,9 +51,30 @@ export function normalizeState(s: GameState): GameState {
   if (p.xp == null) p.xp = 0;
 
   // Reconcile the live asset list with any newly added instruments while
-  // preserving simulated prices for assets the player already had.
-  const known = new Map(s.assets.map((a) => [a.id, a.price]));
-  s.assets = BASE_ASSETS.map((a) => ({ ...a, price: known.get(a.id) ?? a.price }));
+  // preserving simulated prices + chart history for assets the player had.
+  const known = new Map((s.assets ?? []).map((a) => [a.id, a]));
+  s.assets = BASE_ASSETS.map((a) => {
+    const prev = known.get(a.id);
+    return ensureHistory({ ...a, price: prev?.price ?? a.price, history: prev?.history });
+  });
+
+  // Backfill the brokerage layer for saves created before it existed.
+  if (!s.investing) {
+    s.investing = defaultInvesting();
+  } else {
+    const inv = s.investing;
+    const d = defaultInvesting();
+    if (inv.portfolioHistory == null) inv.portfolioHistory = d.portfolioHistory;
+    if (inv.watchlists == null) inv.watchlists = d.watchlists;
+    if (inv.orders == null) inv.orders = [];
+    if (inv.recurring == null) inv.recurring = [];
+    if (inv.gold == null) inv.gold = false;
+    if (inv.goldSince === undefined) inv.goldSince = null;
+    if (inv.marginUsed == null) inv.marginUsed = 0;
+    if (inv.realizedPL == null) inv.realizedPL = 0;
+    if (inv.dividendsEarned == null) inv.dividendsEarned = 0;
+    if (inv.tradeCount == null) inv.tradeCount = 0;
+  }
 
   refreshUnlocks(s);
   s.version = STATE_VERSION;
@@ -133,10 +156,14 @@ function stepOnce(s: GameState): GameState {
 
   s.stats.cash = Math.max(0, s.stats.cash + income);
 
-  // 5. Energy regenerates slowly each tick (used by jobs / actions).
+  // 5. Brokerage: dividends, Gold interest/fees, margin, recurring & resting
+  //    orders, and the portfolio-value snapshot for charts.
+  processInvestingTick(s);
+
+  // 6. Energy regenerates slowly each tick (used by jobs / actions).
   s.stats.energy = Math.min(s.stats.maxEnergy, s.stats.energy + 0.5);
 
-  // 6. Trickle XP from positive passive income so idle play still progresses.
+  // 7. Trickle XP from positive passive income so idle play still progresses.
   if (income > 0) grantXp(s.progression, Math.min(5, Math.log10(income + 1)));
 
   return s;
@@ -153,6 +180,8 @@ export function computeNetWorth(s: GameState): number {
     const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId);
     if (def) nw += def.startupCost * biz.level * 0.8;
   }
+  // Margin debt is a liability against net worth.
+  if (s.investing?.marginUsed) nw -= s.investing.marginUsed;
   return Math.round(nw);
 }
 

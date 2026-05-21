@@ -1,26 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { useGame, gameActions } from "@/lib/store";
+import { useGame } from "@/lib/store";
 import { money, pct } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
-import { educationById, hasFeature, nextUnlock } from "@/lib/game/progression";
+import { LockedScreen } from "@/components/ui";
+import { hasFeature, nextUnlock } from "@/lib/game/progression";
+import { buyingPower } from "@/lib/game/investing";
+import type { MarketAsset } from "@/lib/game/types";
+import AssetRow, { windowChange } from "@/components/invest/AssetRow";
+import PriceChart, { type ChartDisplay } from "@/components/invest/PriceChart";
+import StockDetail from "@/components/invest/StockDetail";
+import GoldScreen from "@/components/invest/GoldScreen";
+import { RH_GOLD, trendColor } from "@/components/invest/theme";
+
+type View = { type: "home" } | { type: "detail"; id: string } | { type: "gold" };
 
 export default function InvestPage() {
   const state = useGame((s) => s.state);
-  const run = useGame((s) => s.run);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [qty, setQty] = useState(1);
+  const [view, setView] = useState<View>({ type: "home" });
+  const [query, setQuery] = useState("");
+  const [display, setDisplay] = useState<ChartDisplay | null>(null);
 
   if (!state) return null;
-  const { assets, holdings, stats, progression } = state;
+  const { assets, holdings, stats, progression, investing } = state;
 
   if (!hasFeature(state, "invest")) {
     const nu = nextUnlock(state);
     return (
       <LockedScreen
         icon="📈"
-        title="Markets"
+        title="Investing"
         requirement={
           nu && nu.flag === "invest"
             ? `Reach ${money(nu.netWorth)} net worth to open a brokerage account. (You: ${money(stats.netWorth)})`
@@ -30,121 +39,189 @@ export default function InvestPage() {
     );
   }
 
-  // Reveal assets gradually by level; advanced instruments need a credential.
+  if (view.type === "detail") return <StockDetail assetId={view.id} onBack={() => setView({ type: "home" })} />;
+  if (view.type === "gold") return <GoldScreen onBack={() => setView({ type: "home" })} />;
+
+  const open = (id: string) => setView({ type: "detail", id });
+
+  // Only assets the player has unlocked are tradable / shown.
   const visible = assets.filter((a) => !a.unlockLevel || progression.level >= a.unlockLevel);
-  const asset = visible.find((a) => a.id === selected);
-  const holding = holdings.find((h) => h.assetId === selected);
-  const credentialMissing = Boolean(
-    asset?.requiresCredential && !progression.credentials.includes(asset.requiresCredential),
-  );
+  const byId = (id: string) => assets.find((a) => a.id === id);
+
+  const holdingsValue = holdings.reduce((sum, h) => sum + (byId(h.assetId)?.price ?? 0) * h.quantity, 0);
+  const portfolioOpen = investing.portfolioHistory[0] ?? holdingsValue;
+
+  // Headline number tracks the chart cursor; defaults to live holdings value.
+  const headValue = display ? display.value : holdingsValue;
+  const changeAbs = display?.changeAbs ?? holdingsValue - portfolioOpen;
+  const changePct = display?.changePct ?? (portfolioOpen ? ((holdingsValue - portfolioOpen) / portfolioOpen) * 100 : 0);
+  const up = display ? display.up : holdingsValue >= portfolioOpen;
+  const color = trendColor(up);
+
+  // ---- Search ----
+  if (query.trim()) {
+    const q = query.toLowerCase();
+    const results = visible.filter(
+      (a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q),
+    );
+    return (
+      <div className="space-y-3">
+        <SearchBar query={query} setQuery={setQuery} />
+        <div className="divide-y divide-white/5">
+          {results.length ? (
+            results.map((a) => <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />)
+          ) : (
+            <div className="py-10 text-center text-sm text-muted">No matches for “{query}”.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Lists ----
+  const watchlist = investing.watchlists.find((w) => w.id === "default");
+  const watched = (watchlist?.assetIds ?? []).map(byId).filter(Boolean) as MarketAsset[];
+  const popular = visible.filter((a) => a.popular);
+  const crypto = visible.filter((a) => a.class === "crypto");
+  const funds = visible.filter((a) => a.class === "index" || a.class === "bond");
+  const movers = [...visible].sort((a, b) => Math.abs(windowChange(b)) - Math.abs(windowChange(a))).slice(0, 5);
+  const lockedCount = assets.length - visible.length;
 
   return (
-    <div className="space-y-3">
-      <SectionTitle sub="Buy low. Sell high. In theory.">Markets</SectionTitle>
-
-      {holdings.length > 0 && (
-        <Card>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-            Your Portfolio
-          </div>
-          <div className="space-y-2">
-            {holdings.map((h) => {
-              const a = assets.find((x) => x.id === h.assetId)!;
-              const value = a.price * h.quantity;
-              const cost = h.avgCost * h.quantity;
-              const gain = ((value - cost) / cost) * 100;
-              return (
-                <div key={h.assetId} className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className="font-semibold">{a.symbol}</span>
-                    <span className="ml-2 text-xs text-muted">{h.quantity.toFixed(2)} @ {money(h.avgCost)}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">{money(value)}</div>
-                    <Pill tone={gain >= 0 ? "up" : "down"}>{pct(gain)}</Pill>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      <div className="space-y-2">
-        {visible.map((a) => {
-          const locked = a.requiresCredential && !progression.credentials.includes(a.requiresCredential);
-          return (
-            <button
-              key={a.id}
-              onClick={() => {
-                setSelected(a.id);
-                setQty(1);
-              }}
-              className={`flex w-full items-center justify-between rounded-xl border p-3 text-left transition ${
-                selected === a.id ? "border-accent bg-accent/10" : "border-white/5 bg-bg-card"
-              }`}
-            >
-              <div>
-                <div className="text-sm font-semibold">
-                  {a.symbol} <span className="text-[10px] uppercase text-muted">{a.class}</span>
-                  {locked && <span className="ml-1 text-[10px] text-danger">🔒 {educationById(a.requiresCredential!)?.short}</span>}
-                </div>
-                <div className="text-[11px] text-muted">{a.name}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold">{money(a.price)}</div>
-                <div className="text-[10px] text-muted">vol {(a.volatility * 100).toFixed(1)}%</div>
-              </div>
-            </button>
-          );
-        })}
-        <div className="pt-1 text-center text-[11px] text-muted">
-          More instruments unlock as you level up.
+    <div className="space-y-4">
+      {/* Portfolio header */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest text-muted">Investing</div>
+        <div className="text-4xl font-extrabold tabular-nums">{money(headValue)}</div>
+        <div className="text-sm font-semibold tabular-nums" style={{ color }}>
+          {changeAbs >= 0 ? "+" : "−"}
+          {money(Math.abs(changeAbs))} ({pct(changePct)}){" "}
+          <span className="text-muted">{display?.scrubbing ? "selected" : "today"}</span>
         </div>
       </div>
 
-      {asset && (
-        <Card className="sticky bottom-24 border-accent/30">
-          <div className="flex items-center justify-between">
-            <div className="font-semibold">{asset.symbol}</div>
-            <div className="font-bold text-accent">{money(asset.price)}</div>
+      <PriceChart data={investing.portfolioHistory} onDisplay={setDisplay} />
+
+      {/* Buying power / Gold */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-white/5 bg-bg-card p-3">
+          <div className="text-[11px] text-muted">Buying power</div>
+          <div className="text-lg font-bold tabular-nums">{money(buyingPower(state))}</div>
+          <div className="text-[10px] text-muted">Cash {money(stats.cash)}</div>
+        </div>
+        <button
+          onClick={() => setView({ type: "gold" })}
+          className="rounded-2xl border p-3 text-left active:scale-[0.98]"
+          style={{ borderColor: `${RH_GOLD}55`, background: `${RH_GOLD}12` }}
+        >
+          <div className="text-[11px]" style={{ color: RH_GOLD }}>
+            ✨ Robinhood Gold
           </div>
-          <input
-            type="number"
-            value={qty}
-            min={0}
-            step={0.1}
-            onChange={(e) => setQty(Math.max(0, Number(e.target.value) || 0))}
-            className="mt-2 w-full rounded-lg bg-white/5 px-3 py-2 text-lg font-bold outline-none"
-          />
-          <div className="mt-1 text-xs text-muted">
-            Cost {money(asset.price * qty)} · Cash {money(stats.cash)}
-            {holding && ` · You own ${holding.quantity.toFixed(2)}`}
+          <div className="text-lg font-bold" style={{ color: RH_GOLD }}>
+            {investing.gold ? "Active" : "Upgrade"}
           </div>
-          {credentialMissing && (
-            <div className="mt-1 text-[11px] text-danger">
-              Requires {educationById(asset.requiresCredential!)?.name}
-            </div>
-          )}
-          <div className="mt-3 flex gap-2">
-            <Button
-              className="flex-1"
-              disabled={asset.price * qty > stats.cash || qty <= 0 || credentialMissing}
-              onClick={() => run(gameActions.buyAsset(state, asset.id, qty))}
-            >
-              Buy
-            </Button>
-            <Button
-              variant="danger"
-              className="flex-1"
-              disabled={!holding || qty <= 0 || (holding?.quantity ?? 0) < qty}
-              onClick={() => run(gameActions.sellAsset(state, asset.id, qty))}
-            >
-              Sell
-            </Button>
+          <div className="text-[10px] text-muted">
+            {investing.marginUsed > 0 ? `Margin ${money(investing.marginUsed)}` : "Interest · margin"}
           </div>
-        </Card>
+        </button>
+      </div>
+
+      <SearchBar query={query} setQuery={setQuery} />
+
+      {holdings.length > 0 && (
+        <List title="Your stocks">
+          {holdings.map((h) => {
+            const a = byId(h.assetId);
+            return a ? <AssetRow key={h.assetId} asset={a} shares={h.quantity} onClick={() => open(a.id)} /> : null;
+          })}
+        </List>
       )}
+
+      {watched.length > 0 && (
+        <List title={watchlist?.name ?? "Watchlist"}>
+          {watched.map((a) => (
+            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+          ))}
+        </List>
+      )}
+
+      {popular.length > 0 && (
+        <List title="Popular">
+          {popular.map((a) => (
+            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+          ))}
+        </List>
+      )}
+
+      <List title="Daily movers">
+        {movers.map((a) => (
+          <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+        ))}
+      </List>
+
+      {crypto.length > 0 && (
+        <List title="Crypto · 24 Hour Market">
+          {crypto.map((a) => (
+            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+          ))}
+        </List>
+      )}
+
+      {funds.length > 0 && (
+        <List title="ETFs & bonds">
+          {funds.map((a) => (
+            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+          ))}
+        </List>
+      )}
+
+      {/* News */}
+      {state.economy.activeEvents.length > 0 && (
+        <List title="News">
+          <ul className="space-y-2 py-1">
+            {state.economy.activeEvents.map((e) => (
+              <li key={e.id} className="text-sm">
+                <span className="font-semibold">{e.title}</span>
+                <span className="text-muted"> — {e.description}</span>
+              </li>
+            ))}
+          </ul>
+        </List>
+      )}
+
+      {lockedCount > 0 && (
+        <div className="rounded-2xl border border-white/5 bg-bg-card p-4 text-center text-[12px] text-muted">
+          🔒 {lockedCount} more instrument{lockedCount > 1 ? "s" : ""} unlock as you level up.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchBar({ query, setQuery }: { query: string; setQuery: (v: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2.5">
+      <span className="text-muted">🔍</span>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search stocks, crypto, funds"
+        className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+      />
+      {query && (
+        <button onClick={() => setQuery("")} className="text-muted active:text-white">
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+function List({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">{title}</div>
+      <div className="divide-y divide-white/5">{children}</div>
     </div>
   );
 }

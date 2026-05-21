@@ -29,6 +29,23 @@ export const RETIRE_THRESHOLD = 5_000_000;
 export const LEGACY_INCOME_BONUS = 0.02; // +2% global income per legacy point
 
 // ---------------------------------------------------------------------------
+// Brokerage tuning (the Robinhood layer)
+// ---------------------------------------------------------------------------
+
+export const ASSET_HISTORY_MAX = 160; // chart points kept per asset
+export const PORTFOLIO_HISTORY_MAX = 240; // portfolio-value chart points
+
+// Robinhood Gold — a subscription that pays interest on idle cash, unlocks
+// margin (borrowing), and charges a small per-tick fee.
+export const GOLD_FEE_PER_TICK = 1.5; // subscription cost per tick
+export const GOLD_CASH_APY_PER_TICK = 0.00004; // interest paid on idle cash
+export const MARGIN_RATE_PER_TICK = 0.0001; // interest charged on borrowed $
+export const MARGIN_MULTIPLIER = 1; // borrow up to 1x your holdings value
+
+// Dividends: yield is an annual %, paid as a small trickle every tick.
+export const DIVIDEND_PER_TICK_FACTOR = 0.0009;
+
+// ---------------------------------------------------------------------------
 // Education — the keys that gate prestigious careers and advanced systems.
 // Studying costs money up front and a real-time study timer (studyTicks).
 // ---------------------------------------------------------------------------
@@ -201,17 +218,25 @@ export const CAREER_TRACKS: CareerTrack[] = [
 // ---------------------------------------------------------------------------
 
 export const BASE_ASSETS: MarketAsset[] = [
-  { id: "spx", symbol: "SPX", name: "Broad Market Index", class: "index", price: 450, volatility: 0.012, drift: 0.0006, sector: "broad" },
-  { id: "tbond", symbol: "T10", name: "10Y Treasury", class: "bond", price: 100, volatility: 0.004, drift: 0.0001, sector: "bonds" },
-  { id: "bank", symbol: "FNB", name: "First National Bank", class: "stock", price: 48, volatility: 0.02, drift: 0.0004, sector: "finance" },
-  { id: "energy", symbol: "PETRO", name: "Petro Global", class: "stock", price: 60, volatility: 0.025, drift: 0.0003, sector: "energy" },
-  { id: "auto", symbol: "VLT", name: "Volt Motors", class: "stock", price: 95, volatility: 0.04, drift: 0.0008, sector: "auto", unlockLevel: 4 },
-  { id: "tech", symbol: "NXST", name: "Nexus Systems", class: "stock", price: 180, volatility: 0.03, drift: 0.001, sector: "tech", unlockLevel: 5 },
-  { id: "gold", symbol: "XAU", name: "Gold", class: "commodity", price: 1950, volatility: 0.01, drift: 0.0002, sector: "metals", unlockLevel: 6 },
-  { id: "oil", symbol: "WTI", name: "Crude Oil", class: "commodity", price: 78, volatility: 0.03, drift: 0.0001, sector: "energy", unlockLevel: 7 },
-  { id: "btc", symbol: "BTC", name: "Bitcorn", class: "crypto", price: 38000, volatility: 0.07, drift: 0.0012, sector: "crypto", unlockLevel: 9 },
-  { id: "eth", symbol: "ETH", name: "Etherium", class: "crypto", price: 2100, volatility: 0.08, drift: 0.0014, sector: "crypto", unlockLevel: 11 },
-  { id: "lev3x", symbol: "BULL3X", name: "3x Leveraged Fund", class: "index", price: 240, volatility: 0.11, drift: 0.0009, sector: "broad", unlockLevel: 14, requiresCredential: "series7" },
+  // --- Available from the start (no unlock level) ---
+  { id: "spx", symbol: "SPY", name: "Broad Market Index", class: "index", price: 450, volatility: 0.012, drift: 0.0006, sector: "broad", logo: "🧺", dividendYield: 1.4, popular: true, blurb: "A basket tracking the 500 largest public companies. The market's heartbeat — boring, diversified, and the bedrock of most portfolios." },
+  { id: "tbond", symbol: "T10", name: "10-Year Treasury", class: "bond", price: 100, volatility: 0.004, drift: 0.0001, sector: "bonds", logo: "🏛️", dividendYield: 4.2, blurb: "Government debt. Low drama, steady coupon. Gets cheaper when interest rates climb." },
+  { id: "bank", symbol: "FNB", name: "First National Bank", class: "stock", price: 48, volatility: 0.02, drift: 0.0004, sector: "finance", logo: "🏦", dividendYield: 3.1, popular: true, blurb: "A big retail bank. Profits swing with interest rates and the credit cycle." },
+  { id: "energy", symbol: "PETRO", name: "Petro Global", class: "stock", price: 60, volatility: 0.025, drift: 0.0003, sector: "energy", logo: "🛢️", dividendYield: 4.8, blurb: "Integrated oil & gas major. Cash gusher when crude is high; pays a fat dividend." },
+  { id: "snack", symbol: "MUNCH", name: "Munchies Co.", class: "stock", price: 72, volatility: 0.014, drift: 0.0004, sector: "consumer", logo: "🍿", dividendYield: 2.6, popular: true, blurb: "Packaged snacks and sodas. Recession-resistant — people eat in good times and bad." },
+  // --- Revealed as the player levels up ---
+  { id: "auto", symbol: "VLT", name: "Volt Motors", class: "stock", price: 95, volatility: 0.04, drift: 0.0008, sector: "auto", logo: "🚗", popular: true, unlockLevel: 3, blurb: "The electric-vehicle darling. Cult following, wild swings, and a CEO who tweets too much." },
+  { id: "tech", symbol: "NXST", name: "Nexus Systems", class: "stock", price: 180, volatility: 0.03, drift: 0.001, sector: "tech", logo: "💻", popular: true, unlockLevel: 4, blurb: "Cloud and AI infrastructure giant. The market's favorite growth engine." },
+  { id: "social", symbol: "BUZZ", name: "Buzzfeed Social", class: "stock", price: 34, volatility: 0.05, drift: 0.0009, sector: "tech", logo: "📱", unlockLevel: 5, blurb: "Ad-funded social network. Lives and dies by daily active users and the outrage cycle." },
+  { id: "pharma", symbol: "RXLF", name: "Relief Pharma", class: "stock", price: 130, volatility: 0.028, drift: 0.0005, sector: "health", logo: "💊", dividendYield: 2.2, unlockLevel: 5, blurb: "Drug maker with a pipeline of blockbusters. Headlines move on trial results." },
+  { id: "gold", symbol: "XAU", name: "Gold", class: "commodity", price: 1950, volatility: 0.01, drift: 0.0002, sector: "metals", logo: "🥇", unlockLevel: 6, blurb: "The classic safe haven. Shines when everyone else is panicking." },
+  { id: "oil", symbol: "WTI", name: "Crude Oil", class: "commodity", price: 78, volatility: 0.03, drift: 0.0001, sector: "energy", logo: "🛢️", unlockLevel: 7, blurb: "A barrel of light sweet crude. Geopolitics in a price chart." },
+  { id: "meme", symbol: "GME", name: "GameStonk", class: "stock", price: 22, volatility: 0.09, drift: 0.0006, sector: "consumer", logo: "🚀", popular: true, unlockLevel: 8, blurb: "The original meme stock. Fundamentals optional; vibes mandatory. 🦍💎🙌" },
+  { id: "btc", symbol: "BTC", name: "Bitcorn", class: "crypto", price: 38000, volatility: 0.07, drift: 0.0012, sector: "crypto", logo: "₿", popular: true, unlockLevel: 9, blurb: "Digital gold. Trades 24/7 and doesn't care about your bedtime." },
+  { id: "etf-tech", symbol: "QQQ", name: "Tech 100 Fund", class: "index", price: 380, volatility: 0.02, drift: 0.0009, sector: "tech", logo: "📊", dividendYield: 0.6, unlockLevel: 10, blurb: "An index of the 100 biggest non-financial names. Tech-heavy growth in one ticker." },
+  { id: "eth", symbol: "ETH", name: "Etherium", class: "crypto", price: 2100, volatility: 0.08, drift: 0.0014, sector: "crypto", logo: "Ξ", unlockLevel: 11, blurb: "The smart-contract platform. Powers most of the on-chain casino." },
+  { id: "doge", symbol: "DOGE", name: "Dogecorn", class: "crypto", price: 0.12, volatility: 0.12, drift: 0.0008, sector: "crypto", logo: "🐕", unlockLevel: 12, blurb: "A joke that refused to die. Pure sentiment, much volatility, very risk." },
+  { id: "lev3x", symbol: "BULL3X", name: "3x Leveraged Fund", class: "index", price: 240, volatility: 0.11, drift: 0.0009, sector: "broad", logo: "⚡", unlockLevel: 14, requiresCredential: "series7", blurb: "Triple-leveraged daily returns. Amplifies the upside — and decays brutally in chop. Not a buy-and-hold." },
 ];
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "level-10", name: "Seasoned", description: "Reach level 10.", icon: "⭐", tier: "silver", check: (s) => s.progression.level >= 10, reward: { luck: 5 } },
   { id: "hundred-k", name: "Six Figures", description: "Reach $100,000 net worth.", icon: "💰", tier: "silver", check: (s) => s.stats.netWorth >= 100_000 },
   { id: "diversified", name: "Diversified", description: "Hold 5 different assets.", icon: "🧺", tier: "silver", check: (s) => s.holdings.length >= 5 },
+  { id: "day-trader", name: "Day Trader", description: "Make 25 trades.", icon: "📲", tier: "silver", check: (s) => (s.investing?.tradeCount ?? 0) >= 25, reward: { cash: 1_000 } },
+  { id: "gold-member", name: "Gold Member", description: "Subscribe to Robinhood Gold.", icon: "✨", tier: "silver", check: (s) => Boolean(s.investing?.gold), reward: { luck: 3 } },
+  { id: "dividend-investor", name: "Living Off Dividends", description: "Collect $5,000 in dividends.", icon: "💸", tier: "gold", check: (s) => (s.investing?.dividendsEarned ?? 0) >= 5_000, reward: { cash: 5_000 } },
 
   { id: "executive", name: "Corner Office", description: "Reach a tier-4 career role.", icon: "🕴️", tier: "gold", check: (s) => topTier(s) >= 4, reward: { cash: 25_000 } },
   { id: "mogul", name: "Property Mogul", description: "Own 5 properties.", icon: "🏘️", tier: "gold", check: (s) => s.properties.length >= 5, reward: { cash: 50_000 } },
