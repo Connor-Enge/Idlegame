@@ -82,8 +82,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const rand = () => game.symbols[Math.floor(Math.random() * game.symbols.length)];
   const showFeature = (text: string) => setFeature((f) => ({ text, seq: (f?.seq ?? 0) + 1 }));
 
-  async function spin() {
-    if (spinning || wager <= 0 || wager > cash) return;
+  async function spin(buy = false) {
+    const stake = buy ? wager * (game.buyCost ?? 0) : wager;
+    if (spinning || wager <= 0 || stake > cash || (buy && !game.buyCost)) return;
     cancelled.current = false;
     setSpinning(true);
     setDone(null);
@@ -93,7 +94,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setOverlays({});
     setFeature(null);
 
-    const result = game.spin(wager, state.stats.luck);
+    const result = game.spin(wager, state.stats.luck, { buy });
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
     const cols = target.length;
@@ -154,9 +155,9 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     run(
       commitGamble(state, {
         game: "slots",
-        wager,
+        wager: stake, // a Feature Buy stakes buyCost × the bet
         payout,
-        net: payout - wager,
+        net: payout - stake,
         won: payout > 0,
         detail: `${game.name}${result.note ? " — " + result.note : ""}`,
       }),
@@ -287,13 +288,23 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
       <div className="mt-3 space-y-2">
         <WagerInput wager={wager} setWager={setWager} cash={cash} disabled={spinning} />
         <button
-          onClick={spin}
+          onClick={() => spin(false)}
           disabled={spinning || wager > cash || wager <= 0}
           className="w-full rounded-xl py-3 text-base font-black disabled:opacity-50"
           style={{ background: theme.accent, color: theme.accentText }}
         >
           {spinning ? "Spinning…" : `SPIN · ${money(wager)}`}
         </button>
+        {game.buyCost && (
+          <button
+            onClick={() => spin(true)}
+            disabled={spinning || wager <= 0 || wager * game.buyCost > cash}
+            className="w-full rounded-xl border py-2 text-sm font-bold disabled:opacity-40"
+            style={{ borderColor: theme.accent, color: theme.accent, background: "transparent" }}
+          >
+            Buy Bonus · {money(wager * game.buyCost)} ({game.buyCost}×)
+          </button>
+        )}
       </div>
 
       {feature && (

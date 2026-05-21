@@ -22,7 +22,8 @@ export interface SlotGame {
   blurb: string;
   symbols: Sym[];
   cols: number;
-  spin: (bet: number, luck: number) => SpinResult;
+  spin: (bet: number, luck: number, opts?: { buy?: boolean }) => SpinResult;
+  buyCost?: number; // cost of Feature Buy, in multiples of the bet
 }
 
 // Each machine gets its own visual identity — distinct backdrop, reel frame,
@@ -172,19 +173,29 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // long-run return-to-player sits around ~90% (house edge ~10%). Tuned against
 // a Monte-Carlo probe; adjust here to retune without touching paytables.
 const CAL: Record<string, number> = {
-  scatter: 0.00142,
+  scatter: 0.1065,
   megaways: 0.0224,
   cluster: 3.22,
   holdwin: 0.49,
-  cascade: 0.00696,
-  book: 0.181,
+  cascade: 0.1182,
+  book: 0.167,
   jackpot: 1.64,
-  ways243: 0.0063,
-  video: 0.0867,
+  ways243: 0.0336,
+  video: 0.1742,
   classic: 0.8,
 };
 
 const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
+
+// Force at least n of a scatter onto distinct reels (used by Feature Buy).
+const forceScatters = (g: Sym[][], sym: Sym, n: number) => {
+  const cols = [...g.keys()].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < n && i < cols.length; i++) {
+    const c = cols[i];
+    const r = Math.floor(Math.random() * g[c].length);
+    g[c][r] = sym;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // 1. Classic 3-reel — single payline; cherries pay even 1-2 of a kind.
@@ -253,8 +264,8 @@ const classic: SlotGame = (() => {
 const video: SlotGame = (() => {
   const W = "🃏";
   const SC = "🎁";
-  const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", W, SC];
-  const weights = [25, 21, 16, 12, 8, 5, 6, 5];
+  const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", "▪️", W, SC];
+  const weights = [20, 17, 13, 10, 7, 4, 22, 6, 5];
   const table: Record<string, [number, number, number]> = {
     "🍇": [0.4, 1, 3],
     "🍉": [0.5, 1.5, 4],
@@ -281,10 +292,12 @@ const video: SlotGame = (() => {
     blurb: "20 lines · wilds · 3 🎁 = free spins with expanding wilds.",
     symbols: syms,
     cols: 5,
-    spin: () => {
+    buyCost: 24,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(5, 3, syms, weights);
+      if (opts?.buy) forceScatters(grid, SC, 3);
       const base = evalLines(grid, L, pay, W, SC);
       total += base.mult;
       const scat = countSym(grid, SC);
@@ -330,8 +343,8 @@ const video: SlotGame = (() => {
 const ways243: SlotGame = (() => {
   const SC = "🌙";
   const WILD = "🐾";
-  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", WILD, SC];
-  const weights = [26, 22, 17, 12, 7, 6, 13];
+  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", "▪️", WILD, SC];
+  const weights = [22, 18, 14, 9, 5, 26, 5, 12];
   const table: Record<string, [number, number, number]> = {
     "🦊": [0.2, 0.6, 1.5],
     "🐺": [0.3, 0.8, 2],
@@ -348,10 +361,12 @@ const ways243: SlotGame = (() => {
     blurb: "243 ways · 🐾 wilds · 3 🌙 = free spins with rising multiplier.",
     symbols: syms,
     cols: 5,
-    spin: () => {
+    buyCost: 5,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(5, 3, syms, weights);
+      if (opts?.buy) forceScatters(grid, SC, 3);
       const base = evalWays(grid, pay, { wild: WILD, scatter: SC });
       total += base.mult;
       const scat = countSym(grid, SC);
@@ -405,10 +420,12 @@ const megaways: SlotGame = (() => {
     blurb: "117,649 ways · cascades · unlimited free-spin multiplier.",
     symbols: syms,
     cols: 6,
-    spin: () => {
+    buyCost: 176,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       let grid = newGrid();
+      if (opts?.buy) forceScatters(grid, SC, 4);
       const ways = countWays(grid);
 
       // Base game: cascades pay at ×1 (no multiplier — that's a free-spins thing).
@@ -505,8 +522,8 @@ const cluster: SlotGame = (() => {
 // ---------------------------------------------------------------------------
 const cascade: SlotGame = (() => {
   const SC = "🎂";
-  const syms = ["🍫", "🍬", "🍭", "🧁", "🍩", SC];
-  const weights = [24, 21, 17, 13, 9, 4];
+  const syms = ["🍫", "🍬", "🍭", "🧁", "🍩", "▪️", SC];
+  const weights = [20, 17, 13, 9, 6, 26, 4];
   const table: Record<string, [number, number, number]> = {
     "🍫": [0.2, 0.5, 1.2],
     "🍬": [0.3, 0.7, 1.8],
@@ -548,10 +565,12 @@ const cascade: SlotGame = (() => {
     blurb: "Rising multiplier · 3 🎂 = free spins with a bigger ladder.",
     symbols: syms,
     cols: 5,
-    spin: () => {
+    buyCost: 14,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(5, 4, syms, weights);
+      if (opts?.buy) forceScatters(grid, SC, 3);
       const baseScat = countSym(grid, SC);
       const base = runCascades(grid, MULTS_BASE, null);
       total += base.win;
@@ -582,8 +601,9 @@ const cascade: SlotGame = (() => {
 const scatterPays: SlotGame = (() => {
   const BOMB = "✖️";
   const SC = "🍭";
-  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BOMB, SC];
-  const weights = [22, 20, 16, 13, 10, 5, 5];
+  const BLANK = "▪️";
+  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BLANK, BOMB, SC];
+  const weights = [18, 16, 13, 10, 7, 26, 5, 5];
   const base: Record<string, [number, number, number]> = {
     "🍌": [0.25, 0.75, 2],
     "🍎": [0.4, 1.2, 3],
@@ -606,7 +626,7 @@ const scatterPays: SlotGame = (() => {
     let step = 0;
     let bombSum = 0; // multiplier bombs accumulate across every tumble
     while (step < 10) {
-      const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC]);
+      const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC, BLANK]);
       if (mult <= 0) break;
       tot += mult;
       // Collect any ✖️ bombs visible on this winning tumble (Sweet Bonanza).
@@ -646,10 +666,12 @@ const scatterPays: SlotGame = (() => {
     blurb: "8+ anywhere; ✖️ bombs; 4 🍭 = free spins.",
     symbols: syms,
     cols: 6,
-    spin: () => {
+    buyCost: 6,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(6, 5, syms, weights);
+      if (opts?.buy) forceScatters(grid, SC, 4);
       const scat = countSym(grid, SC);
       const baseSeq = playSeq(grid);
       total += baseSeq.win;
@@ -775,10 +797,12 @@ const book: SlotGame = (() => {
     blurb: "3 books = 10 free spins with an expanding symbol.",
     symbols: syms,
     cols: 5,
-    spin: () => {
+    buyCost: 10,
+    spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(5, 3, syms, weights);
+      if (opts?.buy) forceScatters(grid, B, 3);
       const baseLines = evalLines(grid, L, pay, undefined, B);
       total += baseLines.mult;
       const books = countSym(grid, B);
