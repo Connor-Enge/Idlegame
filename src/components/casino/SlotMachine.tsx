@@ -4,9 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useGame } from "@/lib/store";
 import { commitGamble } from "@/lib/game/actions";
 import { SLOT_THEMES, type SlotGame } from "@/lib/game/slots/games";
-import { key, type Frame, type Sym } from "@/lib/game/slots/engine";
+import { key, type Sym } from "@/lib/game/slots/engine";
 import { money } from "@/lib/format";
-import { Button } from "@/components/ui";
 import WagerInput from "./WagerInput";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -24,25 +23,26 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const theme = SLOT_THEMES[game.id];
 
   const [wager, setWager] = useState(50);
-  const [grid, setGrid] = useState<Sym[][]>(() => randomShaped(game));
+  const [grid, setGrid] = useState<Sym[][]>(() => restingGrid(game));
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
   const [label, setLabel] = useState<string | null>(null);
   const [runningWin, setRunningWin] = useState(0);
   const [ways, setWays] = useState<number | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [done, setDone] = useState<{ win: number; total: number } | null>(null);
-  const [seq, setSeq] = useState(0);
   const cancelled = useRef(false);
 
   const cash = state.stats.cash;
   const cs = cellSize(game.cols);
-  const maxRows = Math.max(...grid.map((c) => c.length));
+  const maxRows = Math.max(...grid.map((c) => c.length), 1);
 
   useEffect(() => {
     return () => {
       cancelled.current = true;
     };
   }, []);
+
+  const rand = () => game.symbols[Math.floor(Math.random() * game.symbols.length)];
 
   async function spin() {
     if (spinning || wager <= 0 || wager > cash) return;
@@ -55,32 +55,50 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
     const result = game.spin(wager, state.stats.luck);
     setWays(result.ways ?? null);
+    const target = result.frames[0].grid;
 
-    // Scramble the reels for a beat.
-    const shape = result.frames[0].grid;
-    for (let i = 0; i < 9; i++) {
+    // Spin: scramble unlocked reels in place, lock them left-to-right.
+    // No remounting — we only swap symbol content, so it stays smooth.
+    let locked = 0;
+    const iv = setInterval(() => {
       if (cancelled.current) return;
-      setGrid(shape.map((col) => col.map(() => game.symbols[Math.floor(Math.random() * game.symbols.length)])));
-      setSeq((s) => s + 1);
-      await sleep(70);
+      setGrid(target.map((col, c) => (c < locked ? col.slice() : col.map(() => rand()))));
+    }, 55);
+    for (let c = 0; c < target.length; c++) {
+      await sleep(150);
+      if (cancelled.current) return clearInterval(iv);
+      locked = c + 1;
     }
+    clearInterval(iv);
+    setGrid(target.map((c) => c.slice()));
 
-    // Play each frame in sequence.
+    // Reveal frame 0 wins, then play any cascades / respins / free spins.
     let acc = 0;
     for (let f = 0; f < result.frames.length; f++) {
       if (cancelled.current) return;
-      const frame: Frame = result.frames[f];
-      setGrid(frame.grid.map((c) => [...c]));
-      setSeq((s) => s + 1);
-      setLabel(frame.label ?? null);
-      // brief beat, then flash wins
-      await sleep(f === 0 ? 260 : 520);
-      if (cancelled.current) return;
-      if (frame.highlights && frame.highlights.length) setHighlights(new Set(frame.highlights));
-      acc += frame.win ?? 0;
-      setRunningWin(acc);
-      await sleep(frame.highlights && frame.highlights.length ? 620 : 120);
-      setHighlights(new Set());
+      const frame = result.frames[f];
+      if (f > 0) {
+        setHighlights(new Set());
+        setGrid(frame.grid.map((c) => c.slice()));
+        setLabel(frame.label ?? null);
+        await sleep(420);
+        if (cancelled.current) return;
+      } else {
+        await sleep(180);
+      }
+      const hls = frame.highlights ?? [];
+      if (hls.length) {
+        setHighlights(new Set(hls));
+        acc += frame.win ?? 0;
+        setRunningWin(acc);
+        await sleep(680);
+        if (cancelled.current) return;
+        setHighlights(new Set());
+      } else if (frame.win) {
+        acc += frame.win;
+        setRunningWin(acc);
+        await sleep(300);
+      }
     }
 
     if (cancelled.current) return;
@@ -102,7 +120,6 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
   return (
     <div className="rounded-2xl p-3" style={{ background: theme.pageBg }}>
-      {/* Title bar */}
       <div className="mb-2 flex items-center justify-between">
         <div>
           <div className="text-lg font-black leading-none" style={cssText(theme.title + `;font-family:${theme.font}`)}>
@@ -113,7 +130,6 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         <span className="text-2xl">{game.icon}</span>
       </div>
 
-      {/* Cabinet + reels */}
       <div className="rounded-xl p-1.5" style={{ background: theme.cabinet }}>
         <div className="rounded-lg p-2" style={{ background: theme.reelBg }}>
           <div className="flex items-start justify-center gap-1.5" style={{ minHeight: maxRows * (cs + 4) }}>
@@ -123,18 +139,24 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                   const on = highlights.has(key(c, r));
                   return (
                     <div
-                      key={`${c}-${r}-${seq}`}
-                      className="card-deal flex items-center justify-center rounded-md"
+                      key={r}
+                      className="flex items-center justify-center rounded-md"
                       style={{
                         width: cs,
                         height: cs,
                         background: theme.cellBg,
                         border: `1px solid ${on ? theme.accent : theme.cellBorder}`,
                         boxShadow: on ? `0 0 14px 2px ${theme.winGlow}` : undefined,
-                        animationDelay: `${c * 0.05}s`,
+                        transition: "box-shadow .15s, border-color .15s",
                       }}
                     >
-                      <span style={{ fontSize: cs * 0.56, transform: on ? "scale(1.12)" : undefined, transition: "transform .15s" }}>
+                      <span
+                        style={{
+                          fontSize: cs * 0.56,
+                          transform: on ? "scale(1.15)" : "scale(1)",
+                          transition: "transform .15s",
+                        }}
+                      >
                         {sym}
                       </span>
                     </div>
@@ -146,17 +168,17 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         </div>
       </div>
 
-      {/* Feature strip + status */}
       <div className="mt-2 flex min-h-5 items-center justify-between text-[11px]">
-        <span className="text-white/70">
-          {ways != null ? `${ways.toLocaleString()} ways` : game.blurb}
-        </span>
-        {label && <span className="font-semibold" style={{ color: theme.accent }}>{label}</span>}
+        <span className="text-white/70">{ways != null ? `${ways.toLocaleString()} ways` : game.blurb}</span>
+        {label && (
+          <span className="font-semibold" style={{ color: theme.accent }}>
+            {label}
+          </span>
+        )}
       </div>
 
       {game.id === "jackpot" && <JackpotMeters accent={theme.accent} />}
 
-      {/* Win banner */}
       {done && (
         <div
           className="mt-2 rounded-lg p-2 text-center"
@@ -172,12 +194,11 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         </div>
       )}
 
-      {/* Controls */}
       <div className="mt-3 space-y-2">
         <WagerInput wager={wager} setWager={setWager} cash={cash} disabled={spinning} />
         {runningWin > 0 && spinning && (
           <div className="text-center text-sm font-bold" style={{ color: theme.accent }}>
-            +{(runningWin).toFixed(2)}× so far
+            +{runningWin.toFixed(2)}× so far
           </div>
         )}
         <button
@@ -205,34 +226,36 @@ function JackpotMeters({ accent }: { accent: string }) {
       {pots.map((p) => (
         <div key={p.name} className="rounded-md bg-black/30 py-1 text-center">
           <div className="text-[8px] tracking-wider text-white/60">{p.name}</div>
-          <div className="text-[11px] font-bold" style={{ color: accent }}>{p.v}</div>
+          <div className="text-[11px] font-bold" style={{ color: accent }}>
+            {p.v}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function randomShaped(game: SlotGame): Sym[][] {
-  // A reasonable resting grid before the first spin.
+function restingGrid(game: SlotGame): Sym[][] {
   const rows = game.id === "cluster" ? 7 : game.id === "scatter" ? 5 : game.id === "holdwin" || game.id === "cascade" ? 4 : 3;
-  const cols = game.cols;
   const g: Sym[][] = [];
-  for (let c = 0; c < cols; c++) {
+  for (let c = 0; c < game.cols; c++) {
+    const rc = game.id === "megaways" ? 4 : rows;
     const col: Sym[] = [];
-    const rc = game.id === "megaways" ? 3 + Math.floor(Math.random() * 3) : rows;
     for (let r = 0; r < rc; r++) col.push(game.symbols[Math.floor(Math.random() * game.symbols.length)]);
     g.push(col);
   }
   return g;
 }
 
-// Parse a "prop:value;prop:value" string into a React style object.
 function cssText(s: string): React.CSSProperties {
   const out: Record<string, string> = {};
   for (const part of s.split(";")) {
     const idx = part.indexOf(":");
     if (idx === -1) continue;
-    const prop = part.slice(0, idx).trim().replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const prop = part
+      .slice(0, idx)
+      .trim()
+      .replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     out[prop] = part.slice(idx + 1).trim();
   }
   return out as React.CSSProperties;
