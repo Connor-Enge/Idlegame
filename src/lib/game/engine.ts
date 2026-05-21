@@ -194,6 +194,7 @@ function stepOnce(s: GameState): GameState {
   s.career.morale = Math.max(0, Math.min(100, s.career.morale));
   if (s.career.gigCooldownTicks > 0) s.career.gigCooldownTicks -= 1;
   if (s.career.reviewCooldownTicks > 0) s.career.reviewCooldownTicks -= 1;
+  if (s.career.restCooldownTicks > 0) s.career.restCooldownTicks -= 1;
 
   // 3. Real estate net rent (occupancy is stochastic).
   for (const owned of s.properties) {

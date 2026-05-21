@@ -1,6 +1,7 @@
 import { BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
 import { PERKS, PROJECTS } from "./careerData";
 import {
+  REST_COOLDOWN_TICKS,
   REVIEW_COOLDOWN_TICKS,
   TRAIN_ENERGY,
   canNegotiate,
@@ -394,9 +395,12 @@ export function workShift(state: GameState): ActionResult {
 }
 
 export function rest(state: GameState): ActionResult {
+  if ((state.career.restCooldownTicks ?? 0) > 0)
+    return fail(state, `Need to stay busy — can rest again in ${state.career.restCooldownTicks}s`);
   const s = clone(state);
   s.stats.energy = s.stats.maxEnergy;
   s.career.morale = Math.min(100, s.career.morale + 6);
+  s.career.restCooldownTicks = REST_COOLDOWN_TICKS;
   return { state: s, ok: true, message: "Rested. Energy full." };
 }
 

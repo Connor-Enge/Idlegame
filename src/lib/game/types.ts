@@ -121,6 +121,7 @@ export interface PlayerCareer {
   activeProject: ActiveProject | null;
   gigCooldownTicks: number; // ticks until next gig is available
   reviewCooldownTicks: number; // ticks until next raise/review attempt
+  restCooldownTicks: number; // ticks until you can fully rest again
 }
 
 export type ShiftQuality = "perfect" | "good" | "ok" | "miss";

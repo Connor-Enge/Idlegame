@@ -48,6 +48,7 @@ export function freshCareer(): PlayerCareer {
     activeProject: null,
     gigCooldownTicks: 0,
     reviewCooldownTicks: 0,
+    restCooldownTicks: 0,
   };
 }
 
@@ -70,6 +71,7 @@ export function normalizeCareer(c: PlayerCareer): PlayerCareer {
   if (c.activeProject === undefined) c.activeProject = null;
   if (c.gigCooldownTicks == null) c.gigCooldownTicks = 0;
   if (c.reviewCooldownTicks == null) c.reviewCooldownTicks = 0;
+  if (c.restCooldownTicks == null) c.restCooldownTicks = 0;
   return c;
 }
 
@@ -385,6 +387,11 @@ export function canNegotiate(state: GameState): { ok: boolean; reason?: string }
 }
 
 export const REVIEW_COOLDOWN_TICKS = 90;
+
+// Resting fully restores energy but is gated behind a cooldown, so most energy
+// comes from slow passive regen — this caps how fast you can grind shifts/gigs
+// in a single life (otherwise free instant refills make active income endless).
+export const REST_COOLDOWN_TICKS = 150;
 
 // ---------------------------------------------------------------------------
 // Projects.

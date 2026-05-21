@@ -222,8 +222,12 @@ function JobCard({
         <Button variant="secondary" onClick={() => run(gameActions.workShift(state))} disabled={!canWork}>
           ⚡ Quick Shift
         </Button>
-        <Button variant="secondary" onClick={() => run(gameActions.rest(state))}>
-          😴 Rest
+        <Button
+          variant="secondary"
+          disabled={career.restCooldownTicks > 0}
+          onClick={() => run(gameActions.rest(state))}
+        >
+          {career.restCooldownTicks > 0 ? `😴 Rest (${career.restCooldownTicks}s)` : "😴 Rest"}
         </Button>
       </div>
 
