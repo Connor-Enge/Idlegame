@@ -30,8 +30,22 @@ function winTier(mult: number): WinTier | null {
   return null;
 }
 
-function reelDuration(c: number, lastCol: number, feature: boolean): number {
-  return 760 + c * 180 + (feature && c === lastCol ? 800 : 0);
+function reelDuration(c: number, anticip: boolean): number {
+  return 760 + c * 180 + (anticip ? 650 : 0);
+}
+
+// Which reels should show anticipation: a reel anticipates when the scatters
+// already landed on the reels BEFORE it are one short of the trigger (so a
+// scatter on this reel — or a later one — could still complete the bonus).
+function anticipationReels(target: Sym[][], scatterSym?: string, trigger?: number): Set<number> {
+  const set = new Set<number>();
+  if (!scatterSym || !trigger) return set;
+  let before = 0;
+  for (let c = 0; c < target.length; c++) {
+    if (before >= trigger - 1) set.add(c);
+    before += target[c].filter((s) => s === scatterSym).length;
+  }
+  return set;
 }
 
 export default function SlotMachine({ game }: { game: SlotGame }) {
@@ -43,7 +57,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const [mode, setMode] = useState<"grid" | "spin">("grid");
   const [grid, setGrid] = useState<Sym[][]>(() => restingGrid(game));
   const [strips, setStrips] = useState<Sym[][]>([]);
-  const [featInc, setFeatInc] = useState(false);
+  const [anticip, setAnticip] = useState<Set<number>>(new Set());
   const [reveal, setReveal] = useState({ seq: 0, drop: false });
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
   const [overlays, setOverlays] = useState<Record<string, string>>({});
@@ -100,14 +114,17 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
     const cols = target.length;
-    const feature_incoming = result.frames.length > 1 || !!result.note || result.totalMult >= 15;
+    // Anticipation is decided by the scatters that land on the earlier reels,
+    // not by whether this spin happens to pay.
+    const anticipSet = anticipationReels(target, game.scatterSym, game.scatterTrigger);
 
     // Build reel strips: buffer of random symbols, then the landing symbols.
     setStrips(target.map((col) => [...Array.from({ length: BUF }, rand), ...col]));
-    setFeatInc(feature_incoming);
+    setAnticip(anticipSet);
     setMode("spin"); // keyframe animation plays on mount of these reels
 
-    const maxDur = reelDuration(cols - 1, cols - 1, feature_incoming);
+    let maxDur = 0;
+    for (let c = 0; c < cols; c++) maxDur = Math.max(maxDur, reelDuration(c, anticipSet.has(c)));
     await sleep(maxDur + 150);
     if (cancelled.current) return;
 
@@ -173,8 +190,6 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setSpinning(false);
   }
 
-  const lastCol = strips.length - 1;
-
   return (
     <div className="relative overflow-hidden rounded-2xl p-3" style={{ background: theme.pageBg }}>
       <div className="mb-2 flex items-center justify-between">
@@ -193,13 +208,13 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
             {mode === "spin"
               ? strips.map((strip, c) => {
                   const rows = strip.length - BUF;
-                  const dur = reelDuration(c, lastCol, featInc);
+                  const isAnticip = anticip.has(c);
+                  const dur = reelDuration(c, isAnticip);
                   const dist = BUF * pitch;
-                  const anticip = featInc && c === lastCol;
                   return (
                     <div
                       key={c}
-                      className={`relative overflow-hidden rounded-md ${anticip ? "anticip-reel" : ""}`}
+                      className={`relative overflow-hidden rounded-md ${isAnticip ? "anticip-reel" : ""}`}
                       style={{ width: cs, height: rows * pitch, ["--anticip" as string]: theme.winGlow }}
                     >
                       <div

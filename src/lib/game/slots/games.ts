@@ -24,6 +24,8 @@ export interface SlotGame {
   cols: number;
   spin: (bet: number, luck: number, opts?: { buy?: boolean }) => SpinResult;
   buyCost?: number; // cost of Feature Buy, in multiples of the bet
+  scatterSym?: Sym; // symbol that triggers the bonus (drives reel anticipation)
+  scatterTrigger?: number; // how many are needed to trigger
 }
 
 // Each machine gets its own visual identity — distinct backdrop, reel frame,
@@ -293,6 +295,8 @@ const video: SlotGame = (() => {
     symbols: syms,
     cols: 5,
     buyCost: 93,
+    scatterSym: "🎁",
+    scatterTrigger: 3,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -362,6 +366,8 @@ const ways243: SlotGame = (() => {
     symbols: syms,
     cols: 5,
     buyCost: 20,
+    scatterSym: "🌙",
+    scatterTrigger: 3,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -421,6 +427,8 @@ const megaways: SlotGame = (() => {
     symbols: syms,
     cols: 6,
     buyCost: 176,
+    scatterSym: "💫",
+    scatterTrigger: 4,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -581,6 +589,8 @@ const cascade: SlotGame = (() => {
     symbols: syms,
     cols: 5,
     buyCost: 25,
+    scatterSym: "🎂",
+    scatterTrigger: 3,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -693,6 +703,8 @@ const scatterPays: SlotGame = (() => {
     symbols: syms,
     cols: 6,
     buyCost: 37,
+    scatterSym: "🍭",
+    scatterTrigger: 4,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -759,6 +771,8 @@ const holdwin: SlotGame = (() => {
     blurb: "Ways-pay base game · 6 🪙 trigger lock-and-respin with jackpot coins.",
     symbols: syms,
     cols: COLS,
+    scatterSym: C,
+    scatterTrigger: 6,
     spin: () => {
       const grid = genGrid(COLS, ROWS, syms, weights);
       const frames: Frame[] = [];
@@ -848,6 +862,8 @@ const book: SlotGame = (() => {
     symbols: syms,
     cols: 5,
     buyCost: 30,
+    scatterSym: "📖",
+    scatterTrigger: 3,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
