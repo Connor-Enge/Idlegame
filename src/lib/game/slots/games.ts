@@ -179,7 +179,7 @@ const CAL: Record<string, number> = {
   cascade: 0.0874,
   book: 0.181,
   jackpot: 1.64,
-  ways243: 0.099,
+  ways243: 0.0063,
   video: 0.234,
   classic: 0.8,
 };
@@ -281,8 +281,9 @@ const video: SlotGame = (() => {
 // ---------------------------------------------------------------------------
 const ways243: SlotGame = (() => {
   const SC = "🌙";
-  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", SC];
-  const weights = [26, 22, 17, 12, 7, 14];
+  const WILD = "🐾";
+  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", WILD, SC];
+  const weights = [26, 22, 17, 12, 7, 6, 13];
   const table: Record<string, [number, number, number]> = {
     "🦊": [0.2, 0.6, 1.5],
     "🐺": [0.3, 0.8, 2],
@@ -296,24 +297,32 @@ const ways243: SlotGame = (() => {
     name: "Wild Spirits",
     style: "243 Ways",
     icon: "🐉",
-    blurb: "243 ways; 3 🌙 = free spins.",
+    blurb: "243 ways · 🐾 wilds · 3 🌙 = free spins with rising multiplier.",
     symbols: syms,
     cols: 5,
     spin: () => {
       const frames: Frame[] = [];
       let total = 0;
       const grid = genGrid(5, 3, syms, weights);
-      const base = evalWays(grid, pay, { scatter: SC });
+      const base = evalWays(grid, pay, { wild: WILD, scatter: SC });
       total += base.mult;
       const scat = countSym(grid, SC);
-      frames.push({ grid, highlights: base.highlights, win: base.mult, label: scat >= 3 ? "3 🌙 — 8 Free Spins!" : undefined, });
+      frames.push({ grid, highlights: base.highlights, win: base.mult, label: scat >= 3 ? "3 🌙 — 8 Free Spins!" : undefined });
       if (scat >= 3) {
-        for (let i = 1; i <= 8; i++) {
+        let spins = 8;
+        let i = 0;
+        while (spins > 0 && i < 40) {
+          spins--;
+          i++;
+          // Multiplier trail climbs through the round: ×2, ×3, ×4, ×5 (cap).
+          const fsMult = Math.min(5, 2 + Math.floor((i - 1) / 2));
           const fg = genGrid(5, 3, syms, weights);
-          const r = evalWays(fg, pay, { scatter: SC });
-          const w = r.mult * 2;
+          const r = evalWays(fg, pay, { wild: WILD, scatter: SC });
+          const w = r.mult * fsMult;
           total += w;
-          frames.push({ grid: fg, highlights: r.highlights, win: w, label: `Free spin ${i}/8 · ×2` });
+          const more = countSym(fg, SC);
+          if (more >= 3) spins += 5; // retrigger
+          frames.push({ grid: fg, highlights: r.highlights, win: w, label: `Free spin ${i} · ×${fsMult}${more >= 3 ? " · +5!" : ""}` });
         }
       }
       return { frames, totalMult: cap(total), ways: 243 };
