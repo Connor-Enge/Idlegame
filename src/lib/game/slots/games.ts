@@ -177,11 +177,11 @@ const CAL: Record<string, number> = {
   megaways: 0.0224,
   cluster: 3.22,
   holdwin: 0.49,
-  cascade: 0.1182,
-  book: 0.167,
+  cascade: 0.1307,
+  book: 0.5255,
   jackpot: 1.64,
-  ways243: 0.0336,
-  video: 0.1742,
+  ways243: 0.4725,
+  video: 0.676,
   classic: 0.8,
 };
 
@@ -265,7 +265,7 @@ const video: SlotGame = (() => {
   const W = "🃏";
   const SC = "🎁";
   const syms = ["🍇", "🍉", "🔔", "🪙", "💎", "👑", "▪️", W, SC];
-  const weights = [20, 17, 13, 10, 7, 4, 22, 6, 5];
+  const weights = [20, 17, 13, 10, 7, 4, 22, 6, 2];
   const table: Record<string, [number, number, number]> = {
     "🍇": [0.4, 1, 3],
     "🍉": [0.5, 1.5, 4],
@@ -292,7 +292,7 @@ const video: SlotGame = (() => {
     blurb: "20 lines · wilds · 3 🎁 = free spins with expanding wilds.",
     symbols: syms,
     cols: 5,
-    buyCost: 24,
+    buyCost: 93,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -344,7 +344,7 @@ const ways243: SlotGame = (() => {
   const SC = "🌙";
   const WILD = "🐾";
   const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", "▪️", WILD, SC];
-  const weights = [22, 18, 14, 9, 5, 26, 5, 12];
+  const weights = [22, 18, 14, 9, 5, 26, 5, 4];
   const table: Record<string, [number, number, number]> = {
     "🦊": [0.2, 0.6, 1.5],
     "🐺": [0.3, 0.8, 2],
@@ -361,7 +361,7 @@ const ways243: SlotGame = (() => {
     blurb: "243 ways · 🐾 wilds · 3 🌙 = free spins with rising multiplier.",
     symbols: syms,
     cols: 5,
-    buyCost: 5,
+    buyCost: 20,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -523,7 +523,7 @@ const cluster: SlotGame = (() => {
 const cascade: SlotGame = (() => {
   const SC = "🎂";
   const syms = ["🍫", "🍬", "🍭", "🧁", "🍩", "▪️", SC];
-  const weights = [20, 17, 13, 9, 6, 26, 4];
+  const weights = [20, 17, 13, 9, 6, 26, 3];
   const table: Record<string, [number, number, number]> = {
     "🍫": [0.2, 0.5, 1.2],
     "🍬": [0.3, 0.7, 1.8],
@@ -533,7 +533,7 @@ const cascade: SlotGame = (() => {
   };
   // Base ladder resets each spin; free spins use a bigger ladder (Gonzo-style).
   const MULTS_BASE = [1, 2, 3, 5];
-  const MULTS_FS = [3, 6, 9, 15];
+  const MULTS_FS = [5, 10, 20, 40];
   const pay = (s: Sym, reels: number) => (table[s] ? (table[s][reels - 3] ?? 0) * CAL.cascade : 0);
 
   const runCascades = (g0: Sym[][], ladder: number[], fs: number | null) => {
@@ -565,7 +565,7 @@ const cascade: SlotGame = (() => {
     blurb: "Rising multiplier · 3 🎂 = free spins with a bigger ladder.",
     symbols: syms,
     cols: 5,
-    buyCost: 14,
+    buyCost: 25,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -778,7 +778,7 @@ const holdwin: SlotGame = (() => {
 const book: SlotGame = (() => {
   const B = "📖";
   const syms = ["🐍", "🐫", "🪲", "𓂀", "🏺", "👑", B];
-  const weights = [24, 20, 16, 12, 8, 5, 7];
+  const weights = [24, 20, 16, 12, 8, 5, 4];
   const table: Record<string, [number, number, number]> = {
     "🐍": [0.3, 1, 3],
     "🐫": [0.4, 1.5, 4],
@@ -801,7 +801,7 @@ const book: SlotGame = (() => {
     blurb: "3 books = 10 free spins with an expanding symbol.",
     symbols: syms,
     cols: 5,
-    buyCost: 10,
+    buyCost: 30,
     spin: (_b, _l, opts) => {
       const frames: Frame[] = [];
       let total = 0;
@@ -832,7 +832,7 @@ const book: SlotGame = (() => {
           }
           let win = 0;
           const reelsWith = fg.filter((col) => col.every((s) => s === special)).length;
-          if (reelsWith >= 3) win += pay(special, Math.min(5, reelsWith)) * 3; // pays on all rows
+          if (reelsWith >= 3) win += pay(special, Math.min(5, reelsWith)) * 6; // pays on all rows
           const lines = evalLines(fg, L, pay, undefined, B);
           win += lines.mult;
           total += win;
