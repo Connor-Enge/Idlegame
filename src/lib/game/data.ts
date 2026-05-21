@@ -38,8 +38,10 @@ export const PORTFOLIO_HISTORY_MAX = 240; // portfolio-value chart points
 // Robinhood Gold — a subscription that pays interest on idle cash, unlocks
 // margin (borrowing), and charges a small per-tick fee.
 export const GOLD_FEE_PER_TICK = 1.5; // subscription cost per tick
-export const GOLD_CASH_APY_PER_TICK = 0.00004; // interest paid on idle cash
-export const MARGIN_RATE_PER_TICK = 0.0001; // interest charged on borrowed $
+// Ticks run ~1/second, so these are intentionally tiny — at the old daily-rate
+// values, idle cash on Gold tripled in 8h (a money printer). Now ~+9%/8h.
+export const GOLD_CASH_APY_PER_TICK = 0.000003; // interest paid on idle cash
+export const MARGIN_RATE_PER_TICK = 0.000006; // interest charged on borrowed $
 export const MARGIN_MULTIPLIER = 1; // borrow up to 1x your holdings value
 
 // Dividends: yield is an annual %, paid as a small trickle every tick.

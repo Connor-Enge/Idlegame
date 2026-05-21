@@ -1,9 +1,15 @@
+import { BASE_ASSETS } from "./data";
 import type {
   EconomyEvent,
   EconomyPhase,
   EconomyState,
   MarketAsset,
 } from "./types";
+
+// Reference (anchor) price per asset for mean reversion — keeps prices in a
+// tradeable band instead of compounding to infinity over long sessions.
+const REF_PRICE = new Map(BASE_ASSETS.map((a) => [a.id, a.price]));
+const REVERSION = 0.03; // pull strength back toward the anchor (log space)
 
 // A lightweight simulated macro economy. Each tick the economy can transition
 // between business-cycle phases, drift its macro indicators, spawn/expire
@@ -154,9 +160,15 @@ export function stepAssetPrice(asset: MarketAsset, economy: EconomyState): numbe
   const rateDrag = asset.class === "bond" ? -(economy.interestRate - 3) * 0.001 : 0;
 
   const shock = (rng() * 2 - 1) * asset.volatility;
-  const change = asset.drift + sentimentBias + shock + rateDrag;
+  // Mean reversion: the further price has drifted from its anchor, the harder
+  // it's pulled back — so drift + sentiment cause a bounded premium, not a
+  // runaway exponential. (Without this, long idle sessions print money.)
+  const ref = REF_PRICE.get(asset.id) ?? asset.price;
+  const reversion = -REVERSION * Math.log(asset.price / ref);
+  const change = asset.drift + sentimentBias + shock + rateDrag + reversion;
   const next = asset.price * (1 + change) * sectorMult;
-  return Math.max(0.01, round2(next));
+  // Hard safety band: never beyond 25x or below 1/25x the anchor.
+  return Math.max(ref / 25, Math.min(ref * 25, Math.max(0.01, round2(next))));
 }
 
 export function macroSummary(e: EconomyState): string {
