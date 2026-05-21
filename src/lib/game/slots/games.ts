@@ -178,7 +178,7 @@ const CAL: Record<string, number> = {
   holdwin: 1.01,
   cascade: 0.0874,
   book: 0.181,
-  jackpot: 0.09,
+  jackpot: 1.64,
   ways243: 0.099,
   video: 0.234,
   classic: 0.8,
@@ -717,16 +717,28 @@ const book: SlotGame = (() => {
 // ---------------------------------------------------------------------------
 // 10. Progressive jackpot — 5x3 lines + collectible jackpot symbols.
 // ---------------------------------------------------------------------------
+// Live progressive pots (multiplier units) shared with the UI meter. They grow
+// every spin and reset to seed when won via the random Jackpot Wheel — the
+// Mega Moolah model adapted to a bet-multiplier economy.
+type PotTier = "Mini" | "Minor" | "Major" | "Grand";
+const POT_SEED: Record<PotTier, number> = { Mini: 8, Minor: 30, Major: 200, Grand: 1500 };
+const POT_CAP: Record<PotTier, number> = { Mini: 25, Minor: 80, Major: 600, Grand: 3000 };
+const POT_GROW: Record<PotTier, number> = { Mini: 0.02, Minor: 0.05, Major: 0.2, Grand: 0.6 };
+const jackpotPotsState: Record<PotTier, number> = { ...POT_SEED };
+export function jackpotPots(): Record<PotTier, number> {
+  return { ...jackpotPotsState };
+}
+
 const jackpot: SlotGame = (() => {
-  const J = "💰";
-  const syms = ["🎰", "🍀", "💍", "⌛", "🔮", J];
-  const weights = [24, 20, 15, 11, 7, 6];
+  const syms = ["🎰", "🍀", "💍", "⌛", "🔮", "💰"];
+  const weights = [24, 20, 15, 11, 7, 8];
   const table: Record<string, [number, number, number]> = {
     "🎰": [0.4, 1.2, 3],
     "🍀": [0.6, 2, 5],
     "💍": [1, 3, 10],
     "⌛": [1.5, 5, 18],
     "🔮": [3, 10, 40],
+    "💰": [2, 6, 25],
   };
   const L = [
     [1, 1, 1, 1, 1], [0, 0, 0, 0, 0], [2, 2, 2, 2, 2],
@@ -734,32 +746,53 @@ const jackpot: SlotGame = (() => {
     [1, 2, 1, 0, 1], [0, 0, 1, 2, 2], [2, 2, 1, 0, 0], [0, 1, 0, 1, 0],
   ];
   const pay = (s: Sym, c: number) => (table[s] ? (table[s][c - 3] ?? 0) * CAL.jackpot : 0);
-  const POTS = { Mini: 20 * CAL.jackpot, Minor: 100 * CAL.jackpot, Major: 1000 * CAL.jackpot, Grand: 10000 * CAL.jackpot };
+
+  // Random jackpot trigger per spin; tier weighted toward the small pots.
+  const TRIGGER = 0.001;
+  const TIER_WEIGHTS: [PotTier, number][] = [["Mini", 0.7], ["Minor", 0.24], ["Major", 0.05], ["Grand", 0.01]];
+  const pickTier = (): PotTier => {
+    let r = Math.random();
+    for (const [t, w] of TIER_WEIGHTS) {
+      if (r < w) return t;
+      r -= w;
+    }
+    return "Mini";
+  };
+
   return {
     id: "jackpot",
     name: "Jackpot Royale",
     style: "Progressive Jackpot",
     icon: "💰",
-    blurb: "Collect 💰 for Mini → Grand jackpots.",
+    blurb: "Growing pots · random Jackpot Wheel.",
     symbols: syms,
     cols: 5,
     spin: () => {
+      // Pots tick up every spin (capped).
+      (Object.keys(POT_GROW) as PotTier[]).forEach((t) => {
+        jackpotPotsState[t] = Math.min(POT_CAP[t], jackpotPotsState[t] + POT_GROW[t]);
+      });
+
       const grid = genGrid(5, 3, syms, weights);
       const frames: Frame[] = [];
-      const lines = evalLines(grid, L, pay, undefined, J);
+      const lines = evalLines(grid, L, pay);
       let total = lines.mult;
-      const jCells: string[] = [];
-      for (let c = 0; c < 5; c++) for (let r = 0; r < 3; r++) if (grid[c][r] === J) jCells.push(key(c, r));
       let note: string | undefined;
       frames.push({ grid, highlights: lines.highlights, win: lines.mult });
-      if (jCells.length >= 3) {
-        let tier: keyof typeof POTS = "Mini";
-        if (jCells.length >= 6) tier = "Grand";
-        else if (jCells.length === 5) tier = "Major";
-        else if (jCells.length === 4) tier = "Minor";
-        total += POTS[tier];
-        note = `${tier} Jackpot!`;
-        frames.push({ grid, highlights: jCells, win: POTS[tier], label: note });
+
+      // Random Jackpot Wheel can fire on any spin.
+      if (Math.random() < TRIGGER) {
+        const tier = pickTier();
+        const award = Math.round(jackpotPotsState[tier]);
+        // Wheel build-up frames cycling the tiers, then landing.
+        const order: PotTier[] = ["Mini", "Minor", "Major", "Grand"];
+        for (let k = 0; k < 6; k++) {
+          frames.push({ grid, win: 0, label: `🎡 ${order[k % 4]}…` });
+        }
+        total += award;
+        note = `${tier.toUpperCase()} JACKPOT!`;
+        frames.push({ grid, highlights: [], win: award, label: note });
+        jackpotPotsState[tier] = POT_SEED[tier]; // reset the won pot
       }
       return { frames, totalMult: cap(total), note };
     },

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useGame } from "@/lib/store";
 import { commitGamble } from "@/lib/game/actions";
-import { SLOT_THEMES, type SlotGame } from "@/lib/game/slots/games";
+import { SLOT_THEMES, jackpotPots, type SlotGame } from "@/lib/game/slots/games";
 import { key, type Sym } from "@/lib/game/slots/engine";
 import { money } from "@/lib/format";
 import WagerInput from "./WagerInput";
@@ -326,11 +326,12 @@ function CoinShower() {
 }
 
 function JackpotMeters({ accent }: { accent: string }) {
-  const pots = [
-    { name: "MINI", v: "2×" },
-    { name: "MINOR", v: "8×" },
-    { name: "MAJOR", v: "81×" },
-    { name: "GRAND", v: "810×" },
+  const live = jackpotPots();
+  const pots: { name: string; key: keyof typeof live }[] = [
+    { name: "MINI", key: "Mini" },
+    { name: "MINOR", key: "Minor" },
+    { name: "MAJOR", key: "Major" },
+    { name: "GRAND", key: "Grand" },
   ];
   return (
     <div className="mt-2 grid grid-cols-4 gap-1">
@@ -338,7 +339,7 @@ function JackpotMeters({ accent }: { accent: string }) {
         <div key={p.name} className="rounded-md bg-black/30 py-1 text-center">
           <div className="text-[8px] tracking-wider text-white/60">{p.name}</div>
           <div className="text-[11px] font-bold" style={{ color: accent }}>
-            {p.v}
+            {live[p.key].toFixed(1)}×
           </div>
         </div>
       ))}
