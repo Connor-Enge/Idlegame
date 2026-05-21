@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useGame } from "@/lib/store";
 import { money } from "@/lib/format";
 import { macroSummary } from "@/lib/game/economy";
-import { currentAge, xpToNext } from "@/lib/game/progression";
+import { ageParts, lifeProgress, xpToNext } from "@/lib/game/progression";
 
 export default function StatBar() {
   const state = useGame((s) => s.state);
@@ -14,8 +14,10 @@ export default function StatBar() {
   const { stats, economy, progression, life } = state;
   const energyPct = (stats.energy / stats.maxEnergy) * 100;
   const xpPct = (progression.xp / xpToNext(progression.level)) * 100;
-  const age = Math.floor(currentAge(life));
-  const lifePct = ((currentAge(life) - life.startAge) / (life.deathAge - life.startAge)) * 100;
+  const { years: age, day } = ageParts(life);
+  const lifePct = lifeProgress(life) * 100;
+  // Tint the mortality meter toward red as the end of life approaches.
+  const lifeColor = lifePct >= 85 ? "#ef4444" : lifePct >= 65 ? "#f59e0b" : "var(--accent)";
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/5 bg-bg-elev/95 px-4 pb-2 pt-3 backdrop-blur">
@@ -60,17 +62,21 @@ export default function StatBar() {
         <span>🏅 {Math.floor(stats.reputation)}</span>
         <span>🍀 {stats.luck.toFixed(0)}</span>
         <span
-          className="flex items-center gap-1"
-          title={`Age ${age} · Gen ${life.generation} · dies at ${life.deathAge}`}
+          className="flex items-center gap-1.5"
+          title={`Age ${age}, day ${day}/365 · Generation ${life.generation} · life expectancy ${life.deathAge}`}
         >
           🎂
-          <span className="inline-block h-1.5 w-10 overflow-hidden rounded-full bg-white/10">
+          <span className="font-semibold tabular-nums text-white">
+            {age}
+            <span className="text-muted">y</span>
+          </span>
+          <span className="relative inline-block h-1.5 w-12 overflow-hidden rounded-full bg-white/10">
             <span
-              className="block h-full bg-accent transition-all"
-              style={{ width: `${Math.min(100, lifePct)}%` }}
+              className="block h-full transition-all"
+              style={{ width: `${Math.min(100, lifePct)}%`, background: lifeColor }}
             />
           </span>
-          {age}
+          <span className="tabular-nums text-muted">d{day}</span>
         </span>
         {progression.studyingId && (
           <span className="text-accent">📚 {progression.studyTicksRemaining}s</span>

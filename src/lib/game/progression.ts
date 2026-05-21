@@ -137,8 +137,9 @@ export function legacyGain(netWorth: number): number {
 // Life & mortality
 // ---------------------------------------------------------------------------
 
-export const TICKS_PER_DAY = 5;
-export const TICKS_PER_YEAR = TICKS_PER_DAY * 365; // 1825 ticks = 1 year
+export const TICKS_PER_DAY = 1; // each tick advances the player one day
+export const DAYS_PER_YEAR = 365;
+export const TICKS_PER_YEAR = TICKS_PER_DAY * DAYS_PER_YEAR;
 export const LIFE_START_AGE = 18;
 
 export function rollDeathAge(): number {
@@ -157,6 +158,20 @@ export function defaultLife(): LifeState {
 
 export function currentAge(life: LifeState): number {
   return life.startAge + life.ageTicks / TICKS_PER_YEAR;
+}
+
+// Whole years lived + the day within the current year (1..365), for display.
+export function ageParts(life: LifeState): { years: number; day: number } {
+  return {
+    years: life.startAge + Math.floor(life.ageTicks / TICKS_PER_YEAR),
+    day: (life.ageTicks % TICKS_PER_YEAR) + 1,
+  };
+}
+
+// Fraction of the whole life elapsed (0..1), for the mortality meter.
+export function lifeProgress(life: LifeState): number {
+  const span = (life.deathAge - life.startAge) * TICKS_PER_YEAR;
+  return span > 0 ? Math.min(1, life.ageTicks / span) : 0;
 }
 
 // Legacy (retirement) credits awarded when a life ends — unlike voluntary

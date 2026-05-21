@@ -13,7 +13,7 @@ import {
 } from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export function createInitialState(playerId: string): GameState {
   const now = Date.now();
@@ -57,6 +57,7 @@ function rebirth(prev: GameState): GameState {
 
 // Backfill fields added in newer versions so older saves don't crash. Mutates.
 export function normalizeState(s: GameState): GameState {
+  const incomingVersion = s.version;
   if (!s.progression) {
     s.progression = defaultProgression();
     // Reward returning players for any net worth already accrued.
@@ -87,6 +88,12 @@ export function normalizeState(s: GameState): GameState {
     if (l.deathAge == null || l.deathAge < 50) l.deathAge = 65 + Math.floor(Math.random() * 36);
     if (l.generation == null) l.generation = 1;
     if (l.deathReport === undefined) l.deathReport = null;
+    // v3 changed the clock from 5 ticks/day (1825 ticks/year) to 1 tick/day
+    // (365/year). Rescale lived ticks so a player's age is preserved rather
+    // than instantly multiplying past their death age.
+    if (incomingVersion != null && incomingVersion < 3) {
+      l.ageTicks = Math.round(l.ageTicks / 5);
+    }
   }
 
   // Reconcile the live asset list with any newly added instruments while
