@@ -81,7 +81,7 @@ export default function JobsPage() {
         </div>
         <div className="w-24 shrink-0">
           <div className="mb-1 text-right text-[10px] text-muted">
-            {progression.xp}/{xpToNext(progression.level)} XP
+            {progression.xp.toFixed(2)}/{xpToNext(progression.level)} XP
           </div>
           <ProgressBar value={xpPct} />
         </div>

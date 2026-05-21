@@ -54,7 +54,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between text-sm">
           <span className="font-semibold">Level {progression.level}</span>
           <span className="text-[11px] text-muted">
-            {progression.xp}/{xpToNext(progression.level)} XP
+            {progression.xp.toFixed(2)}/{xpToNext(progression.level)} XP
             {progression.legacyPoints > 0 && ` · ✨ ${progression.legacyPoints} legacy`}
           </span>
         </div>
