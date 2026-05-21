@@ -146,10 +146,21 @@ export function stepEconomy(state: EconomyState): EconomyState {
   };
 }
 
-// Re-price a single asset for the current economy tick using geometric
-// Brownian-ish motion biased by sentiment, drift and active sector events.
-export function stepAssetPrice(asset: MarketAsset, economy: EconomyState): number {
-  const sentimentBias = economy.marketSentiment * asset.volatility * 0.5;
+// Each asset's sensitivity to the shared market sentiment. Stocks/crypto move
+// WITH the market; bonds and gold are safe havens that move AGAINST it.
+function sentimentBeta(asset: MarketAsset): number {
+  if (asset.class === "bond") return -0.5;
+  if (asset.sector === "metals") return -0.3;
+  if (asset.class === "crypto") return 1.4;
+  if (asset.class === "commodity") return 0.35;
+  return 1; // stocks, indices
+}
+
+// Re-price a single asset for the current economy tick. The move combines a
+// SHARED market factor (sentiment × the asset's beta) with the asset's OWN
+// idiosyncratic momentum + random shock, so names don't all move in lockstep.
+export function stepAsset(asset: MarketAsset, economy: EconomyState): MarketAsset {
+  const sentimentBias = economy.marketSentiment * asset.volatility * 0.5 * sentimentBeta(asset);
   let sectorMult = 1;
   for (const ev of economy.activeEvents) {
     if (ev.effects.sectorBoost && ev.effects.sectorBoost.sector === asset.sector) {
@@ -159,16 +170,21 @@ export function stepAssetPrice(asset: MarketAsset, economy: EconomyState): numbe
   // Bonds get cheaper as rates rise.
   const rateDrag = asset.class === "bond" ? -(economy.interestRate - 3) * 0.001 : 0;
 
+  // Idiosyncratic momentum: a per-asset trend that random-walks and decays,
+  // giving each name its own multi-tick direction (the main de-correlator).
+  const momentum = (asset.momentum ?? 0) * 0.96 + (rng() * 2 - 1) * asset.volatility * 0.35;
+
   const shock = (rng() * 2 - 1) * asset.volatility;
   // Mean reversion: the further price has drifted from its anchor, the harder
   // it's pulled back — so drift + sentiment cause a bounded premium, not a
   // runaway exponential. (Without this, long idle sessions print money.)
   const ref = REF_PRICE.get(asset.id) ?? asset.price;
   const reversion = -REVERSION * Math.log(asset.price / ref);
-  const change = asset.drift + sentimentBias + shock + rateDrag + reversion;
-  const next = asset.price * (1 + change) * sectorMult;
+  const change = asset.drift + momentum + sentimentBias + shock + rateDrag + reversion;
+  const raw = asset.price * (1 + change) * sectorMult;
   // Hard safety band: never beyond 25x or below 1/25x the anchor.
-  return Math.max(ref / 25, Math.min(ref * 25, Math.max(0.01, round2(next))));
+  const price = Math.max(ref / 25, Math.min(ref * 25, Math.max(0.01, round2(raw))));
+  return { ...asset, price, momentum };
 }
 
 export function macroSummary(e: EconomyState): string {

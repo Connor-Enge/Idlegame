@@ -214,6 +214,9 @@ export interface MarketAsset {
   popular?: boolean; // surfaces in the "Popular" list
   // Rolling price history for charts/sparklines (most-recent last).
   history?: number[];
+  // Idiosyncratic trend that random-walks per asset, so names don't all move
+  // together — market sentiment is shared, this is each stock's own story.
+  momentum?: number;
 }
 
 export interface Holding {

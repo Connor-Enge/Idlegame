@@ -1,6 +1,6 @@
 import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
 import { freshCareer, normalizeCareer, perkBundle } from "./career";
-import { initialEconomy, stepAssetPrice, stepEconomy } from "./economy";
+import { initialEconomy, stepAsset, stepEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
 import { defaultProgression, grantXp, incomeMultiplier, refreshUnlocks } from "./progression";
 import type { GameState, MarketAsset } from "./types";
@@ -60,7 +60,7 @@ export function normalizeState(s: GameState): GameState {
   const known = new Map((s.assets ?? []).map((a) => [a.id, a]));
   s.assets = BASE_ASSETS.map((a) => {
     const prev = known.get(a.id);
-    return ensureHistory({ ...a, price: prev?.price ?? a.price, history: prev?.history });
+    return ensureHistory({ ...a, price: prev?.price ?? a.price, history: prev?.history, momentum: prev?.momentum });
   });
 
   // Backfill the brokerage layer for saves created before it existed.
@@ -113,7 +113,7 @@ function stepOnce(s: GameState): GameState {
 
   // 1. Economy first — it prices everything downstream.
   s.economy = stepEconomy(s.economy);
-  s.assets = s.assets.map((a) => ({ ...a, price: stepAssetPrice(a, s.economy) }));
+  s.assets = s.assets.map((a) => stepAsset(a, s.economy));
 
   const mult = incomeMultiplier(s.progression);
   let income = 0;
