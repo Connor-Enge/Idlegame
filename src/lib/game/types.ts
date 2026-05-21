@@ -92,11 +92,70 @@ export interface OfflineReport {
   levels: number;
 }
 
+// A workplace project the player has accepted: completes over several shifts
+// for a lump-sum reward. Optional layer on top of regular shift work.
+export interface ActiveProject {
+  projectId: string;
+  shiftsRemaining: number;
+  totalShifts: number;
+}
+
 export interface PlayerCareer {
   trackId: string | null;
   levelIndex: number;
   shiftsWorked: number;
   employedSince: number | null;
+  // ----- Career system v2 -----
+  skills: Record<string, number>; // skillId -> accumulated skill XP
+  performance: number; // 0..100 review score at current job
+  morale: number; // 0..100, scales pay and gates raises
+  salaryMultiplier: number; // raises stack here (starts at 1)
+  shiftStreak: number; // consecutive non-failed shifts
+  bestShiftStreak: number;
+  totalEarned: number; // lifetime gross career income (shifts + gigs)
+  shiftsTotal: number; // lifetime shifts across all jobs
+  gigsCompleted: number;
+  projectsCompleted: number;
+  raisesNegotiated: number;
+  perks: string[]; // purchased workplace perk ids
+  activeProject: ActiveProject | null;
+  gigCooldownTicks: number; // ticks until next gig is available
+  reviewCooldownTicks: number; // ticks until next raise/review attempt
+}
+
+export type ShiftQuality = "perfect" | "good" | "ok" | "miss";
+
+export interface ShiftMoment {
+  taskId: string;
+  skillId: string;
+  quality: ShiftQuality;
+}
+
+export interface ShiftResult {
+  trackId: string;
+  title: string;
+  moments: ShiftMoment[];
+  score: number; // 0..1 aggregate performance this shift
+  cash: number;
+  reputation: number;
+  performanceGain: number;
+  skillXp: Record<string, number>;
+  energyCost: number;
+  moraleChange: number;
+  promoted: boolean;
+  newTitle?: string;
+  projectCompleted?: { name: string; bonus: number };
+}
+
+export interface GigResult {
+  gigId: string;
+  name: string;
+  skillId: string;
+  quality: ShiftQuality;
+  cash: number;
+  skillXp: number;
+  reputation: number;
+  energyCost: number;
 }
 
 // ---------------------------------------------------------------------------

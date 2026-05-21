@@ -1,4 +1,5 @@
 import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
+import { freshCareer, normalizeCareer, perkBundle } from "./career";
 import { initialEconomy, stepAssetPrice, stepEconomy } from "./economy";
 import { defaultProgression, grantXp, incomeMultiplier, refreshUnlocks } from "./progression";
 import type { GameState, MarketAsset } from "./types";
@@ -20,7 +21,7 @@ export function createInitialState(playerId: string): GameState {
       lastTick: now,
     },
     progression: defaultProgression(),
-    career: { trackId: null, levelIndex: 0, shiftsWorked: 0, employedSince: null },
+    career: freshCareer(),
     holdings: [],
     properties: [],
     businesses: [],
@@ -47,6 +48,10 @@ export function normalizeState(s: GameState): GameState {
   if (p.achievements == null) p.achievements = [];
   if (p.level == null || p.level < 1) p.level = 1;
   if (p.xp == null) p.xp = 0;
+
+  // Career sub-state migration.
+  if (!s.career) s.career = freshCareer();
+  else normalizeCareer(s.career);
 
   // Reconcile the live asset list with any newly added instruments while
   // preserving simulated prices for assets the player already had.
@@ -90,17 +95,32 @@ function stepOnce(s: GameState): GameState {
   const mult = incomeMultiplier(s.progression);
   let income = 0;
 
-  // 2. Salary (passive while employed).
+  // 2. Salary (passive while employed). Raises, morale and perks all scale it.
   if (s.career.trackId) {
     const track = CAREER_TRACKS.find((t) => t.id === s.career.trackId);
     const level = track?.levels[s.career.levelIndex];
     if (level) {
-      // Recession drags salary slightly; reputation grows on the job.
+      const perks = perkBundle(s);
       const macroMult = 1 + s.economy.gdpGrowth;
-      income += level.baseSalaryPerTick * macroMult * mult;
+      const moraleFactor = 0.7 + (s.career.morale / 100) * 0.5;
+      const salary =
+        level.baseSalaryPerTick *
+        macroMult *
+        mult *
+        s.career.salaryMultiplier *
+        moraleFactor *
+        perks.passiveSalaryMult;
+      income += salary;
+      s.career.totalEarned += salary;
       s.stats.reputation += 0.2;
     }
   }
+
+  // Morale drifts toward a 60 baseline; cooldowns tick down.
+  s.career.morale += (60 - s.career.morale) * 0.01;
+  s.career.morale = Math.max(0, Math.min(100, s.career.morale));
+  if (s.career.gigCooldownTicks > 0) s.career.gigCooldownTicks -= 1;
+  if (s.career.reviewCooldownTicks > 0) s.career.reviewCooldownTicks -= 1;
 
   // 3. Real estate net rent (occupancy is stochastic).
   for (const owned of s.properties) {
