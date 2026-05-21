@@ -2,14 +2,30 @@
 
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill } from "@/components/ui";
+import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
 import { PROPERTIES } from "@/lib/game/data";
+import { educationById, hasFeature, nextUnlock } from "@/lib/game/progression";
 
 export default function RealEstatePage() {
   const state = useGame((s) => s.state);
   const run = useGame((s) => s.run);
   if (!state) return null;
-  const { properties, stats } = state;
+  const { properties, stats, progression } = state;
+
+  if (!hasFeature(state, "realestate")) {
+    const nu = nextUnlock(state);
+    return (
+      <LockedScreen
+        icon="🏘️"
+        title="Real Estate"
+        requirement={
+          nu && nu.flag === "realestate"
+            ? `Reach ${money(nu.netWorth)} net worth to access the property market. (You: ${money(stats.netWorth)})`
+            : "Keep building net worth to unlock real estate."
+        }
+      />
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -62,8 +78,9 @@ export default function RealEstatePage() {
         <div className="text-xs font-semibold uppercase tracking-wider text-muted">Market Listings</div>
         {PROPERTIES.map((p) => {
           const down = p.baseValue * 0.2;
+          const credLocked = p.requiresCredential && !progression.credentials.includes(p.requiresCredential);
           return (
-            <Card key={p.id}>
+            <Card key={p.id} className={credLocked ? "opacity-70" : ""}>
               <div className="flex items-start justify-between">
                 <div>
                   <div className="font-semibold">{p.name}</div>
@@ -73,23 +90,29 @@ export default function RealEstatePage() {
                 </div>
                 <div className="text-right text-sm font-bold">{money(p.baseValue)}</div>
               </div>
-              <div className="mt-3 flex gap-2">
-                <Button
-                  className="flex-1"
-                  disabled={p.baseValue > stats.cash}
-                  onClick={() => run(gameActions.buyProperty(state, p.id, false))}
-                >
-                  Buy cash
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  disabled={down > stats.cash}
-                  onClick={() => run(gameActions.buyProperty(state, p.id, true))}
-                >
-                  Mortgage ({money(down)} down)
-                </Button>
-              </div>
+              {credLocked ? (
+                <div className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-center text-[11px] text-danger">
+                  🔒 Requires {educationById(p.requiresCredential!)?.name}
+                </div>
+              ) : (
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    className="flex-1"
+                    disabled={p.baseValue > stats.cash}
+                    onClick={() => run(gameActions.buyProperty(state, p.id, false))}
+                  >
+                    Buy cash
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    disabled={down > stats.cash}
+                    onClick={() => run(gameActions.buyProperty(state, p.id, true))}
+                  >
+                    Mortgage ({money(down)} down)
+                  </Button>
+                </div>
+              )}
             </Card>
           );
         })}

@@ -1,19 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useGame } from "@/lib/store";
+import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Card, SectionTitle, Pill } from "@/components/ui";
-import { BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "@/lib/game/data";
+import { Button, Card, SectionTitle, Pill, ProgressBar } from "@/components/ui";
+import { BUSINESS_TYPES, CAREER_TRACKS, RETIRE_THRESHOLD } from "@/lib/game/data";
+import { canRetire, legacyGain, nextUnlock, xpToNext } from "@/lib/game/progression";
 
 export default function HomePage() {
   const state = useGame((s) => s.state);
+  const run = useGame((s) => s.run);
   if (!state) return null;
 
-  const { stats, career, economy, holdings, properties, businesses } = state;
+  const { stats, career, economy, holdings, properties, businesses, progression } = state;
 
   const track = CAREER_TRACKS.find((t) => t.id === career.trackId);
   const jobTitle = track ? track.levels[career.levelIndex].title : "Unemployed";
+  const nu = nextUnlock(state);
+  const retireReady = canRetire(state);
 
   const holdingsValue = holdings.reduce((sum, h) => {
     const a = state.assets.find((x) => x.id === h.assetId);
@@ -44,6 +48,58 @@ export default function HomePage() {
           <Breakdown label="Businesses" value={money(bizValue)} />
         </div>
       </Card>
+
+      {/* Level + next unlock */}
+      <Card>
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-semibold">Level {progression.level}</span>
+          <span className="text-[11px] text-muted">
+            {progression.xp}/{xpToNext(progression.level)} XP
+            {progression.legacyPoints > 0 && ` · ✨ ${progression.legacyPoints} legacy`}
+          </span>
+        </div>
+        <ProgressBar className="mt-2" value={(progression.xp / xpToNext(progression.level)) * 100} />
+        {nu && (
+          <div className="mt-3">
+            <div className="mb-1 flex justify-between text-[11px] text-muted">
+              <span>Next unlock: {nu.label}</span>
+              <span>{money(stats.netWorth)} / {money(nu.netWorth)}</span>
+            </div>
+            <ProgressBar value={(stats.netWorth / nu.netWorth) * 100} />
+          </div>
+        )}
+      </Card>
+
+      {/* Prestige */}
+      {(retireReady || progression.retirements > 0) && (
+        <Card className={retireReady ? "border-accent/40" : ""}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-semibold">Retire &amp; Reinvest</div>
+              <div className="text-[11px] text-muted">
+                {progression.retirements > 0 && `Retired ${progression.retirements}× · `}
+                Each Legacy Point = +2% income, forever.
+              </div>
+            </div>
+            <span className="text-2xl">✨</span>
+          </div>
+          {retireReady ? (
+            <Button
+              className="mt-3 w-full"
+              onClick={() => {
+                if (confirm(`Retire now for +${legacyGain(stats.netWorth)} Legacy Points? This resets your run.`))
+                  run(gameActions.retire(state));
+              }}
+            >
+              Retire for +{legacyGain(stats.netWorth)} ✨
+            </Button>
+          ) : (
+            <div className="mt-3 text-[11px] text-muted">
+              Reach {money(RETIRE_THRESHOLD)} net worth to retire again.
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Tile href="/jobs" icon="💼" title={jobTitle} sub="Career" />

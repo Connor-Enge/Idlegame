@@ -2,14 +2,30 @@
 
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill } from "@/components/ui";
+import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
 import { BUSINESS_TYPES } from "@/lib/game/data";
+import { hasFeature, nextUnlock } from "@/lib/game/progression";
 
 export default function BusinessPage() {
   const state = useGame((s) => s.state);
   const run = useGame((s) => s.run);
   if (!state) return null;
-  const { businesses, stats, economy } = state;
+  const { businesses, stats, economy, progression } = state;
+
+  if (!hasFeature(state, "business")) {
+    const nu = nextUnlock(state);
+    return (
+      <LockedScreen
+        icon="🏢"
+        title="Businesses"
+        requirement={
+          nu && nu.flag === "business"
+            ? `Reach ${money(nu.netWorth)} net worth to register a business. (You: ${money(stats.netWorth)})`
+            : "Unlock investing first, then keep building net worth."
+        }
+      />
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -71,27 +87,30 @@ export default function BusinessPage() {
 
       <div className="space-y-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted">Start a Business</div>
-        {BUSINESS_TYPES.map((b) => (
-          <Card key={b.id}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-semibold">{b.name}</div>
-                <div className="text-[11px] text-muted">{b.description}</div>
-                <div className="mt-1 text-[11px] text-muted">
-                  ~{money(b.baseRevenuePerTick - b.baseCostPerTick)}/tick base profit
+        {BUSINESS_TYPES.map((b) => {
+          const levelLocked = b.unlockLevel != null && progression.level < b.unlockLevel;
+          return (
+            <Card key={b.id} className={levelLocked ? "opacity-70" : ""}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="font-semibold">{b.name}</div>
+                  <div className="text-[11px] text-muted">{b.description}</div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    ~{money(b.baseRevenuePerTick - b.baseCostPerTick)}/tick base profit
+                  </div>
                 </div>
+                <div className="text-right text-sm font-bold">{money(b.startupCost)}</div>
               </div>
-              <div className="text-right text-sm font-bold">{money(b.startupCost)}</div>
-            </div>
-            <Button
-              className="mt-3 w-full"
-              disabled={b.startupCost > stats.cash}
-              onClick={() => run(gameActions.startBusiness(state, b.id))}
-            >
-              Found ({money(b.startupCost)})
-            </Button>
-          </Card>
-        ))}
+              <Button
+                className="mt-3 w-full"
+                disabled={levelLocked || b.startupCost > stats.cash}
+                onClick={() => run(gameActions.startBusiness(state, b.id))}
+              >
+                {levelLocked ? `🔒 Unlocks at level ${b.unlockLevel}` : `Found (${money(b.startupCost)})`}
+              </Button>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

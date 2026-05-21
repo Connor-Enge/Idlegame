@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import * as actions from "@/lib/game/actions";
-import { advance, createInitialState } from "@/lib/game/engine";
+import { advance, createInitialState, normalizeState } from "@/lib/game/engine";
 import type { GambleResult, GameState } from "@/lib/game/types";
 
 const LS_KEY = "gp:save";
@@ -59,6 +59,7 @@ export const useGame = create<GameStore>((set, get) => ({
       }
     }
     if (!state) state = createInitialState(playerId);
+    else state = normalizeState(state); // backfill fields for older saves
 
     // 2. Apply offline progress based on elapsed real time.
     const elapsedMs = Date.now() - (state.stats.lastTick || Date.now());
@@ -72,7 +73,7 @@ export const useGame = create<GameStore>((set, get) => ({
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.state && data.state.stats.netWorth > (get().state?.stats.netWorth ?? 0)) {
-          set({ state: data.state });
+          set({ state: normalizeState(data.state) });
         }
       })
       .catch(() => {});

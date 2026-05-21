@@ -1,6 +1,15 @@
 import { BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
-import { computeNetWorth } from "./engine";
+import { computeNetWorth, createInitialState } from "./engine";
 import { playGamble } from "./gambling";
+import {
+  canRetire,
+  canStartStudy,
+  educationById,
+  grantXp,
+  hasFeature,
+  legacyGain,
+  trackUnlocked,
+} from "./progression";
 import type { GambleGame, GambleResult, GameState } from "./types";
 
 export type ActionResult = {
@@ -18,8 +27,13 @@ function fail(state: GameState, message: string): ActionResult {
 
 export function buyAsset(state: GameState, assetId: string, quantity: number): ActionResult {
   if (quantity <= 0) return fail(state, "Quantity must be positive");
+  if (!hasFeature(state, "invest")) return fail(state, "Brokerage access locked");
   const asset = state.assets.find((a) => a.id === assetId);
   if (!asset) return fail(state, "Unknown asset");
+  if (asset.unlockLevel && state.progression.level < asset.unlockLevel)
+    return fail(state, `Unlocks at level ${asset.unlockLevel}`);
+  if (asset.requiresCredential && !state.progression.credentials.includes(asset.requiresCredential))
+    return fail(state, `Requires ${educationById(asset.requiresCredential)?.short ?? "a license"}`);
   const cost = asset.price * quantity;
   if (cost > state.stats.cash) return fail(state, "Not enough cash");
 
@@ -45,9 +59,12 @@ export function sellAsset(state: GameState, assetId: string, quantity: number): 
 
   const s = clone(state);
   const h = s.holdings.find((x) => x.assetId === assetId)!;
+  const profit = (asset.price - h.avgCost) * quantity;
   h.quantity -= quantity;
   s.stats.cash += asset.price * quantity;
   if (h.quantity <= 0) s.holdings = s.holdings.filter((x) => x.assetId !== assetId);
+  // Realized gains grant XP; selling at a loss teaches nothing.
+  if (profit > 0) grantXp(s.progression, Math.min(30, Math.log10(profit + 1) * 6));
   s.stats.netWorth = computeNetWorth(s);
   return { state: s, ok: true, message: `Sold ${quantity} ${asset.symbol}` };
 }
@@ -68,6 +85,8 @@ export function gamble(
   s.stats.cash = s.stats.cash - wager + result.payout;
   // Winning builds a little reputation/luck momentum; losing erodes luck.
   s.stats.luck = Math.max(0, s.stats.luck + (result.won ? 0.5 : -0.2));
+  // Playing builds XP win or lose, scaled by stake (capped).
+  grantXp(s.progression, Math.min(15, Math.log10(wager + 1) * 3));
   s.stats.netWorth = computeNetWorth(s);
   return {
     state: s,
@@ -82,11 +101,12 @@ export function gamble(
 export function takeJob(state: GameState, trackId: string): ActionResult {
   const track = CAREER_TRACKS.find((t) => t.id === trackId);
   if (!track) return fail(state, "Unknown career track");
+  const gate = trackUnlocked(state, track);
+  if (!gate.ok) return fail(state, `Locked: ${gate.reason}`);
   const entry = track.levels[0];
-  if (state.stats.reputation < entry.reputationRequired)
-    return fail(state, "Not enough reputation");
 
   const s = clone(state);
+  // Always start at the bottom of a track — no skipping straight to executive.
   s.career = { trackId, levelIndex: 0, shiftsWorked: 0, employedSince: Date.now() };
   return { state: s, ok: true, message: `Hired as ${entry.title}` };
 }
@@ -111,6 +131,7 @@ export function workShift(state: GameState): ActionResult {
   s.stats.cash += level.baseSalaryPerTick * 8; // a shift pays a burst
   s.stats.reputation += 5;
   s.career.shiftsWorked += 1;
+  grantXp(s.progression, 8 + level.tier * 3);
   s.stats.netWorth = computeNetWorth(s);
 
   let message = `Worked a shift as ${level.title}. +$${level.baseSalaryPerTick * 8}`;
@@ -138,13 +159,17 @@ export function rest(state: GameState): ActionResult {
 // --------------------------- Real estate ---------------------------
 
 export function buyProperty(state: GameState, propertyId: string, withMortgage: boolean): ActionResult {
+  if (!hasFeature(state, "realestate")) return fail(state, "Property market locked");
   const def = PROPERTIES.find((p) => p.id === propertyId);
   if (!def) return fail(state, "Unknown property");
+  if (def.requiresCredential && !state.progression.credentials.includes(def.requiresCredential))
+    return fail(state, `Requires ${educationById(def.requiresCredential)?.short ?? "a license"}`);
   const downPayment = withMortgage ? def.baseValue * 0.2 : def.baseValue;
   if (downPayment > state.stats.cash) return fail(state, "Can't afford the down payment");
 
   const s = clone(state);
   s.stats.cash -= downPayment;
+  grantXp(s.progression, 15);
   s.properties.push({
     propertyId,
     purchasePrice: def.baseValue,
@@ -177,12 +202,16 @@ export function toggleRent(state: GameState, index: number): ActionResult {
 // --------------------------- Business ---------------------------
 
 export function startBusiness(state: GameState, businessId: string): ActionResult {
+  if (!hasFeature(state, "business")) return fail(state, "Business registration locked");
   const def = BUSINESS_TYPES.find((b) => b.id === businessId);
   if (!def) return fail(state, "Unknown business");
+  if (def.unlockLevel && state.progression.level < def.unlockLevel)
+    return fail(state, `Unlocks at level ${def.unlockLevel}`);
   if (def.startupCost > state.stats.cash) return fail(state, "Not enough capital");
 
   const s = clone(state);
   s.stats.cash -= def.startupCost;
+  grantXp(s.progression, 20);
   s.businesses.push({
     businessId,
     level: 1,
@@ -228,6 +257,43 @@ export function investMarketing(state: GameState, index: number): ActionResult {
   s.stats.cash -= cost;
   s.businesses[index].marketingLevel += 1;
   return { state: s, ok: true, message: "Marketing boosted" };
+}
+
+// --------------------------- Education ---------------------------
+
+export function studyEducation(state: GameState, educationId: string): ActionResult {
+  const edu = educationById(educationId);
+  if (!edu) return fail(state, "Unknown program");
+  const gate = canStartStudy(state, edu);
+  if (!gate.ok) return fail(state, gate.reason ?? "Can't enroll");
+
+  const s = clone(state);
+  s.stats.cash -= edu.cost;
+  if (edu.studyTicks <= 0) {
+    s.progression.credentials.push(edu.id);
+    grantXp(s.progression, 40);
+    return { state: s, ok: true, message: `Earned ${edu.name}` };
+  }
+  s.progression.studyingId = edu.id;
+  s.progression.studyTicksRemaining = edu.studyTicks;
+  return { state: s, ok: true, message: `Enrolled: ${edu.name}` };
+}
+
+// --------------------------- Prestige ---------------------------
+
+// Retire: convert net worth into permanent Legacy Points, then reset the run.
+export function retire(state: GameState): ActionResult {
+  if (!canRetire(state)) return fail(state, "Net worth too low to retire");
+  const gain = legacyGain(state.stats.netWorth);
+
+  const fresh = createInitialState(state.playerId);
+  fresh.progression.legacyPoints = state.progression.legacyPoints + gain;
+  fresh.progression.retirements = state.progression.retirements + 1;
+  return {
+    state: fresh,
+    ok: true,
+    message: `Retired! +${gain} Legacy Points (permanent income boost).`,
+  };
 }
 
 function clone<T>(v: T): T {

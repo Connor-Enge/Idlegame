@@ -59,6 +59,34 @@ export function Stat({ label, value, accent }: { label: string; value: string; a
   );
 }
 
+export function LockedScreen({
+  icon,
+  title,
+  requirement,
+}: {
+  icon: string;
+  title: string;
+  requirement: string;
+}) {
+  return (
+    <div className="mt-10 flex flex-col items-center gap-3 px-6 text-center">
+      <div className="text-5xl opacity-50">{icon}</div>
+      <h1 className="text-xl font-bold">{title}</h1>
+      <div className="rounded-xl border border-white/10 bg-bg-card px-4 py-3 text-sm text-muted">
+        🔒 {requirement}
+      </div>
+    </div>
+  );
+}
+
+export function ProgressBar({ value, className = "" }: { value: number; className?: string }) {
+  return (
+    <div className={`h-2 overflow-hidden rounded-full bg-white/10 ${className}`}>
+      <div className="h-full bg-accent transition-all" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    </div>
+  );
+}
+
 export function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "up" | "down" | "neutral" }) {
   const cls =
     tone === "up"

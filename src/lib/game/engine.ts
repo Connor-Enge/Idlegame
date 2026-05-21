@@ -1,8 +1,9 @@
 import { BASE_ASSETS, BUSINESS_TYPES, CAREER_TRACKS, PROPERTIES } from "./data";
 import { initialEconomy, stepAssetPrice, stepEconomy } from "./economy";
+import { defaultProgression, grantXp, incomeMultiplier, refreshUnlocks } from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export function createInitialState(playerId: string): GameState {
   const now = Date.now();
@@ -18,6 +19,7 @@ export function createInitialState(playerId: string): GameState {
       createdAt: now,
       lastTick: now,
     },
+    progression: defaultProgression(),
     career: { trackId: null, levelIndex: 0, shiftsWorked: 0, employedSince: null },
     holdings: [],
     properties: [],
@@ -28,22 +30,63 @@ export function createInitialState(playerId: string): GameState {
   };
 }
 
+// Backfill fields added in newer versions so older saves don't crash. Mutates.
+export function normalizeState(s: GameState): GameState {
+  if (!s.progression) {
+    s.progression = defaultProgression();
+    // Reward returning players for any net worth already accrued.
+    s.progression.level = 1;
+  }
+  const p = s.progression;
+  if (p.credentials == null) p.credentials = [];
+  if (p.unlocks == null) p.unlocks = [];
+  if (p.studyingId === undefined) p.studyingId = null;
+  if (p.studyTicksRemaining == null) p.studyTicksRemaining = 0;
+  if (p.legacyPoints == null) p.legacyPoints = 0;
+  if (p.retirements == null) p.retirements = 0;
+  if (p.level == null || p.level < 1) p.level = 1;
+  if (p.xp == null) p.xp = 0;
+
+  // Reconcile the live asset list with any newly added instruments while
+  // preserving simulated prices for assets the player already had.
+  const known = new Map(s.assets.map((a) => [a.id, a.price]));
+  s.assets = BASE_ASSETS.map((a) => ({ ...a, price: known.get(a.id) ?? a.price }));
+
+  refreshUnlocks(s);
+  s.version = STATE_VERSION;
+  return s;
+}
+
 // Advance the whole simulation by `ticks` steps. Pure-ish: returns new state.
 export function advance(state: GameState, ticks: number): GameState {
-  let s: GameState = structuredCloneSafe(state);
+  let s: GameState = normalizeState(structuredCloneSafe(state));
   for (let i = 0; i < ticks; i++) {
     s = stepOnce(s);
   }
   s.stats.netWorth = computeNetWorth(s);
+  refreshUnlocks(s);
   s.stats.lastTick = Date.now();
   return s;
 }
 
 function stepOnce(s: GameState): GameState {
+  // 0. Advance any in-progress study; grant the credential when it completes.
+  if (s.progression.studyingId && s.progression.studyTicksRemaining > 0) {
+    s.progression.studyTicksRemaining -= 1;
+    if (s.progression.studyTicksRemaining <= 0) {
+      if (!s.progression.credentials.includes(s.progression.studyingId)) {
+        s.progression.credentials.push(s.progression.studyingId);
+      }
+      grantXp(s.progression, 40);
+      s.progression.studyingId = null;
+    }
+  }
+
   // 1. Economy first — it prices everything downstream.
   s.economy = stepEconomy(s.economy);
   s.assets = s.assets.map((a) => ({ ...a, price: stepAssetPrice(a, s.economy) }));
 
+  const mult = incomeMultiplier(s.progression);
   let income = 0;
 
   // 2. Salary (passive while employed).
@@ -53,7 +96,7 @@ function stepOnce(s: GameState): GameState {
     if (level) {
       // Recession drags salary slightly; reputation grows on the job.
       const macroMult = 1 + s.economy.gdpGrowth;
-      income += level.baseSalaryPerTick * macroMult;
+      income += level.baseSalaryPerTick * macroMult * mult;
       s.stats.reputation += 0.2;
     }
   }
@@ -63,7 +106,7 @@ function stepOnce(s: GameState): GameState {
     const def = PROPERTIES.find((p) => p.id === owned.propertyId);
     if (!def) continue;
     const occupied = owned.rented && Math.random() < def.occupancyChance;
-    const rent = occupied ? def.rentPerTick * (1 + s.economy.inflation / 100) : 0;
+    const rent = occupied ? def.rentPerTick * (1 + s.economy.inflation / 100) * mult : 0;
     income += rent - def.upkeepPerTick;
     // Property value drifts with sentiment.
     owned.currentValue = Math.max(
@@ -82,7 +125,7 @@ function stepOnce(s: GameState): GameState {
     const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId);
     if (!def) continue;
     const revMult = biz.level * (1 + biz.marketingLevel * 0.15) * (1 + s.economy.gdpGrowth);
-    const revenue = def.baseRevenuePerTick * revMult;
+    const revenue = def.baseRevenuePerTick * revMult * mult;
     const cost = def.baseCostPerTick * biz.level + biz.employees * 5;
     income += revenue - cost;
   }
@@ -91,6 +134,9 @@ function stepOnce(s: GameState): GameState {
 
   // 5. Energy regenerates slowly each tick (used by jobs / actions).
   s.stats.energy = Math.min(s.stats.maxEnergy, s.stats.energy + 0.5);
+
+  // 6. Trickle XP from positive passive income so idle play still progresses.
+  if (income > 0) grantXp(s.progression, Math.min(5, Math.log10(income + 1)));
 
   return s;
 }

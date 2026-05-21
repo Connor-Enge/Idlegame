@@ -30,11 +30,47 @@ export interface JobLevel {
   promoteAfterShifts: number; // shifts worked before promotion is offered
 }
 
+export interface TrackRequirement {
+  credentials?: string[]; // education ids that must be owned
+  level?: number; // minimum player level
+  reputation?: number; // minimum reputation
+}
+
 export interface CareerTrack {
   id: string;
   name: string;
   description: string;
+  prestigeRank: number; // ordering for display: higher = more prestigious
+  requires?: TrackRequirement;
   levels: JobLevel[];
+}
+
+// ---------------------------------------------------------------------------
+// Progression — player level, education and prestige
+// ---------------------------------------------------------------------------
+
+export interface EducationProgram {
+  id: string;
+  name: string;
+  short: string;
+  description: string;
+  cost: number;
+  levelRequired: number;
+  studyTicks: number; // real ticks of study to complete
+  requires: string[]; // prerequisite education ids
+}
+
+export type FeatureFlag = "invest" | "business" | "realestate";
+
+export interface Progression {
+  level: number;
+  xp: number;
+  credentials: string[]; // earned education ids
+  studyingId: string | null;
+  studyTicksRemaining: number;
+  unlocks: FeatureFlag[]; // sticky feature unlocks
+  legacyPoints: number; // permanent prestige currency
+  retirements: number;
 }
 
 export interface PlayerCareer {
@@ -75,6 +111,8 @@ export interface MarketAsset {
   volatility: number; // 0..1 daily-ish stdev
   drift: number; // long-run trend per tick
   sector: string;
+  unlockLevel?: number; // hidden until the player reaches this level
+  requiresCredential?: string; // e.g. derivatives gated behind a license
 }
 
 export interface Holding {
@@ -96,6 +134,7 @@ export interface Property {
   rentPerTick: number;
   upkeepPerTick: number;
   occupancyChance: number; // 0..1 chance tenant is paying each tick
+  requiresCredential?: string; // e.g. commercial needs a real-estate license
 }
 
 export interface OwnedProperty {
@@ -118,6 +157,7 @@ export interface BusinessType {
   baseRevenuePerTick: number;
   baseCostPerTick: number;
   description: string;
+  unlockLevel?: number; // hidden until the player reaches this level
 }
 
 export interface OwnedBusiness {
@@ -167,6 +207,7 @@ export interface EconomyEvent {
 export interface GameState {
   playerId: string;
   stats: PlayerStats;
+  progression: Progression;
   career: PlayerCareer;
   holdings: Holding[];
   properties: OwnedProperty[];
