@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill, ProgressBar } from "@/components/ui";
+import { Button, Card, Pill, ProgressBar } from "@/components/ui";
 import { CAREER_TRACKS, EDUCATION } from "@/lib/game/data";
 import { GIGS, PERKS, PROJECTS, SKILLS, MAX_SKILL_LEVEL } from "@/lib/game/careerData";
 import { canStartStudy, educationById, trackUnlocked, xpToNext } from "@/lib/game/progression";
@@ -27,10 +27,19 @@ import type { GameState } from "@/lib/game/types";
 
 type Mode = { kind: "hub" } | { kind: "shift" } | { kind: "gig"; gigId: string };
 
+const TABS = [
+  { id: "job", label: "Job" },
+  { id: "gigs", label: "Gigs" },
+  { id: "skills", label: "Learn" },
+  { id: "tracks", label: "Tracks" },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
+
 export default function JobsPage() {
   const state = useGame((s) => s.state);
   const run = useGame((s) => s.run);
   const [mode, setMode] = useState<Mode>({ kind: "hub" });
+  const [tab, setTab] = useState<Tab>("job");
 
   if (!state) return null;
 
@@ -58,33 +67,73 @@ export default function JobsPage() {
 
   const { career, progression } = state;
   const track = trackById(career.trackId);
+  const xpPct = (progression.xp / xpToNext(progression.level)) * 100;
 
   return (
-    <div className="space-y-4 pb-4">
-      <SectionTitle
-        sub={`Level ${progression.level} · ${progression.xp}/${xpToNext(progression.level)} XP`}
-      >
-        Career
-      </SectionTitle>
-
-      {track ? (
-        <JobCard state={state} run={run} onWork={() => setMode({ kind: "shift" })} />
-      ) : (
-        <Card>
-          <p className="text-sm text-muted">
-            You&apos;re unemployed. Pick up <span className="text-accent">side gigs</span> for fast
-            cash, train your <span className="text-accent">skills</span>, and study to unlock real
-            careers below.
+    <div className="pb-4">
+      {/* Compact header: title, level + xp progress, current role at a glance */}
+      <div className="mb-3 mt-1 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold leading-tight">Career</h1>
+          <p className="truncate text-xs text-muted">
+            {track ? track.levels[career.levelIndex].title : "Unemployed"} · Lv {progression.level}
           </p>
-        </Card>
-      )}
+        </div>
+        <div className="w-24 shrink-0">
+          <div className="mb-1 text-right text-[10px] text-muted">
+            {progression.xp}/{xpToNext(progression.level)} XP
+          </div>
+          <ProgressBar value={xpPct} />
+        </div>
+      </div>
 
-      <SkillsSection state={state} run={run} />
-      <GigsSection state={state} onPlay={(gigId) => setMode({ kind: "gig", gigId })} />
-      {track && <ProjectsSection state={state} run={run} />}
-      <PerksSection state={state} run={run} />
-      <EducationSection state={state} run={run} />
-      <TracksSection state={state} run={run} />
+      {/* Sticky sub-nav so switching never requires scrolling back up */}
+      <div className="sticky top-0 z-10 -mx-4 mb-3 bg-bg/95 px-4 py-2 backdrop-blur">
+        <div className="flex gap-1 rounded-xl bg-bg-card p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 rounded-lg py-2 text-xs font-semibold transition ${
+                tab === t.id ? "bg-accent text-black" : "text-muted active:text-white"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {tab === "job" && (
+          <>
+            {track ? (
+              <JobCard state={state} run={run} onWork={() => setMode({ kind: "shift" })} />
+            ) : (
+              <Card>
+                <p className="text-sm text-muted">
+                  You&apos;re unemployed. Pick up <span className="text-accent">side gigs</span> for
+                  fast cash, train your <span className="text-accent">skills</span>, and study to
+                  unlock real careers.
+                </p>
+              </Card>
+            )}
+            {track && <ProjectsSection state={state} run={run} />}
+            <PerksSection state={state} run={run} />
+          </>
+        )}
+
+        {tab === "gigs" && <GigsSection state={state} onPlay={(gigId) => setMode({ kind: "gig", gigId })} />}
+
+        {tab === "skills" && (
+          <>
+            <SkillsSection state={state} run={run} />
+            <EducationSection state={state} run={run} />
+          </>
+        )}
+
+        {tab === "tracks" && <TracksSection state={state} run={run} />}
+      </div>
     </div>
   );
 }
