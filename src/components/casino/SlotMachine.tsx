@@ -9,8 +9,8 @@ import { money } from "@/lib/format";
 import WagerInput from "./WagerInput";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const raf = () => new Promise((r) => requestAnimationFrame(() => r(null)));
-const BUF = 20; // buffer symbols per reel for the scroll
+const BUF = 18; // buffer symbols per reel for the scroll
+const GAP = 4; // matches gap-1
 
 function cellSize(cols: number): number {
   if (cols <= 3) return 60;
@@ -30,6 +30,10 @@ function winTier(mult: number): WinTier | null {
   return null;
 }
 
+function reelDuration(c: number, lastCol: number, feature: boolean): number {
+  return 760 + c * 180 + (feature && c === lastCol ? 800 : 0);
+}
+
 export default function SlotMachine({ game }: { game: SlotGame }) {
   const state = useGame((s) => s.state)!;
   const run = useGame((s) => s.run);
@@ -39,10 +43,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
   const [mode, setMode] = useState<"grid" | "spin">("grid");
   const [grid, setGrid] = useState<Sym[][]>(() => restingGrid(game));
   const [strips, setStrips] = useState<Sym[][]>([]);
-  const [armed, setArmed] = useState(false);
-  const [stopped, setStopped] = useState<boolean[]>([]);
-  const [anticipCol, setAnticipCol] = useState<number>(-1);
-  const [dropSeq, setDropSeq] = useState(0);
+  const [featInc, setFeatInc] = useState(false);
+  const [reveal, setReveal] = useState({ seq: 0, drop: false });
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
   const [exploding, setExploding] = useState<Set<string>>(new Set());
   const [feature, setFeature] = useState<{ text: string; seq: number } | null>(null);
@@ -54,8 +56,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
   const cash = state.stats.cash;
   const cs = cellSize(game.cols);
+  const pitch = cs + GAP;
   const maxRows = Math.max(...(mode === "spin" ? strips.map((s) => s.length - BUF) : grid.map((c) => c.length)), 1);
-  const windowH = maxRows * (cs + 4);
 
   useEffect(() => () => void (cancelled.current = true), []);
 
@@ -65,16 +67,15 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
       setDisplayWin(0);
       return;
     }
-    let raf1 = 0;
+    let id = 0;
     const start = performance.now();
-    const dur = 900;
     const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / dur);
+      const p = Math.min(1, (t - start) / 900);
       setDisplayWin(Math.floor(done.win * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf1 = requestAnimationFrame(tick);
+      if (p < 1) id = requestAnimationFrame(tick);
     };
-    raf1 = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf1);
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
   }, [done]);
 
   const rand = () => game.symbols[Math.floor(Math.random() * game.symbols.length)];
@@ -94,42 +95,22 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setWays(result.ways ?? null);
     const target = result.frames[0].grid;
     const cols = target.length;
-
-    // Anticipation: if a feature or a big win is coming, the last reel lingers.
     const feature_incoming = result.frames.length > 1 || !!result.note || result.totalMult >= 15;
 
-    // Build reel strips: buffer of random symbols + the landing symbols.
-    const newStrips = target.map((col) => {
-      const buf: Sym[] = [];
-      for (let i = 0; i < BUF; i++) buf.push(rand());
-      return [...buf, ...col];
-    });
-    setStrips(newStrips);
-    setStopped(new Array(cols).fill(false));
-    setAnticipCol(feature_incoming ? cols - 1 : -1);
-    setArmed(false);
-    setMode("spin");
-    await raf();
-    await raf();
-    if (cancelled.current) return;
-    setArmed(true);
+    // Build reel strips: buffer of random symbols, then the landing symbols.
+    setStrips(target.map((col) => [...Array.from({ length: BUF }, rand), ...col]));
+    setFeatInc(feature_incoming);
+    setMode("spin"); // keyframe animation plays on mount of these reels
 
-    const durations: number[] = [];
-    for (let c = 0; c < cols; c++) {
-      durations.push(820 + c * 170 + (feature_incoming && c === cols - 1 ? 750 : 0));
-    }
-    durations.forEach((d, c) =>
-      setTimeout(() => setStopped((s) => { const n = [...s]; n[c] = true; return n; }), d),
-    );
-    await sleep(Math.max(...durations) + 140);
+    const maxDur = reelDuration(cols - 1, cols - 1, feature_incoming);
+    await sleep(maxDur + 150);
     if (cancelled.current) return;
 
-    // Land: switch to static grid and drop the symbols in.
+    // Land on the static grid (no drop — the reels already placed the symbols).
     setGrid(target.map((c) => c.slice()));
-    setDropSeq((s) => s + 1);
+    setReveal((s) => ({ seq: s.seq + 1, drop: false }));
     setMode("grid");
-    setAnticipCol(-1);
-    await sleep(160);
+    await sleep(140);
 
     // Present each frame: highlight wins, tumble cascades, feature popups.
     let acc = 0;
@@ -146,8 +127,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         setExploding(new Set());
         setHighlights(new Set());
         setGrid(frame.grid.map((c) => c.slice()));
-        setDropSeq((s) => s + 1);
-        await sleep(460);
+        setReveal((s) => ({ seq: s.seq + 1, drop: true }));
+        await sleep(470);
         if (cancelled.current) return;
       }
       if (frame.label) showFeature(frame.label);
@@ -155,11 +136,11 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
       if (hl.length) {
         setHighlights(new Set(hl));
         acc += frame.win ?? 0;
-        await sleep(720);
+        await sleep(740);
         prev = hl;
       } else {
         acc += frame.win ?? 0;
-        if (frame.label) await sleep(700);
+        if (frame.label) await sleep(720);
       }
     }
 
@@ -182,6 +163,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
     setSpinning(false);
   }
 
+  const lastCol = strips.length - 1;
+
   return (
     <div className="relative overflow-hidden rounded-2xl p-3" style={{ background: theme.pageBg }}>
       <div className="mb-2 flex items-center justify-between">
@@ -200,21 +183,20 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
             {mode === "spin"
               ? strips.map((strip, c) => {
                   const rows = strip.length - BUF;
-                  const h = rows * (cs + 4);
-                  const isStopped = stopped[c];
-                  const dur = 820 + c * 170 + (anticipCol === c ? 750 : 0);
+                  const dur = reelDuration(c, lastCol, featInc);
+                  const dist = BUF * pitch;
+                  const anticip = featInc && c === lastCol;
                   return (
                     <div
                       key={c}
-                      className={`relative overflow-hidden rounded-md ${anticipCol === c && !isStopped ? "anticip-reel" : ""}`}
-                      style={{ width: cs, height: h, ["--anticip" as string]: theme.winGlow }}
+                      className={`relative overflow-hidden rounded-md ${anticip ? "anticip-reel" : ""}`}
+                      style={{ width: cs, height: rows * pitch, ["--anticip" as string]: theme.winGlow }}
                     >
                       <div
                         className="flex flex-col gap-1"
                         style={{
-                          transform: armed ? `translateY(-${BUF * (cs + 4)}px)` : "translateY(0)",
-                          transition: armed ? `transform ${dur}ms cubic-bezier(0.18, 0.7, 0.16, 1.06)` : "none",
-                          filter: isStopped ? "none" : "blur(1.4px)",
+                          ["--dist" as string]: `${dist}px`,
+                          animation: `reelSpin ${dur}ms cubic-bezier(0.1, 0.62, 0.12, 1) forwards, reelBlur ${dur}ms linear forwards`,
                         }}
                       >
                         {strip.map((sym, i) => (
@@ -231,7 +213,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                   );
                 })
               : grid.map((col, c) => (
-                  <div key={c} className="flex flex-col gap-1" style={{ minHeight: windowH }}>
+                  <div key={c} className="flex flex-col gap-1" style={{ minHeight: maxRows * pitch }}>
                     {col.map((sym, r) => {
                       const k = key(c, r);
                       const on = highlights.has(k);
@@ -239,8 +221,8 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                       const dim = highlights.size > 0 && !on;
                       return (
                         <div
-                          key={`${r}-${dropSeq}`}
-                          className="slot-drop flex items-center justify-center rounded-md"
+                          key={`${r}-${reveal.seq}`}
+                          className={`flex items-center justify-center rounded-md ${reveal.drop ? "slot-drop" : ""}`}
                           style={{
                             width: cs,
                             height: cs,
@@ -249,7 +231,7 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
                             boxShadow: on ? `0 0 16px 2px ${theme.winGlow}` : undefined,
                             opacity: dim ? 0.32 : 1,
                             transition: "opacity .2s, box-shadow .15s, border-color .15s",
-                            animationDelay: `${c * 0.04 + r * 0.03}s`,
+                            animationDelay: reveal.drop ? `${c * 0.04 + r * 0.03}s` : undefined,
                           }}
                         >
                           <span
@@ -300,19 +282,14 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
         </button>
       </div>
 
-      {/* Feature / multiplier popup */}
       {feature && (
         <div key={feature.seq} className="feature-pop pointer-events-none absolute inset-x-0 top-1/3 z-20 flex justify-center">
-          <div
-            className="rounded-xl px-4 py-2 text-center text-base font-black shadow-lg"
-            style={{ background: theme.accent, color: theme.accentText }}
-          >
+          <div className="rounded-xl px-4 py-2 text-center text-base font-black shadow-lg" style={{ background: theme.accent, color: theme.accentText }}>
             {feature.text}
           </div>
         </div>
       )}
 
-      {/* Big-win celebration */}
       {done?.tier && done.win > 0 && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
           <CoinShower />

@@ -168,3 +168,16 @@ body {
   50% { transform: scale(1); opacity: 1; }
 }
 .sparkle { position: absolute; animation: sparkle 0.9s ease-in-out infinite; }
+
+/* Reel scroll — plays on mount, decelerates to the landing position. The
+   --dist custom property is the travel distance set per reel inline. */
+@keyframes reelSpin {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-1 * var(--dist))); }
+}
+/* Blur clears as the reel slows, so a stopped reel is always crisp. */
+@keyframes reelBlur {
+  0% { filter: blur(1.8px); }
+  65% { filter: blur(1.4px); }
+  100% { filter: blur(0); }
+}
