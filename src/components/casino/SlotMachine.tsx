@@ -270,20 +270,23 @@ export default function SlotMachine({ game }: { game: SlotGame }) {
 
       {game.id === "jackpot" && <JackpotMeters accent={theme.accent} />}
 
-      {done && (
-        <div
-          className="mt-2 rounded-lg p-2 text-center"
-          style={{ border: `1px solid ${done.win > 0 ? theme.accent : "rgba(255,255,255,0.15)"}` }}
-        >
-          {done.win > 0 ? (
-            <span className="text-lg font-black" style={{ color: theme.accent }}>
-              WIN {money(displayWin)} · {done.mult.toFixed(2)}×
-            </span>
-          ) : (
-            <span className="text-sm text-white/60">No win — spin again</span>
-          )}
-        </div>
-      )}
+      {/* Fixed-height result slot — always reserved so the buttons never shift. */}
+      <div className="mt-2 flex h-12 items-center justify-center">
+        {done && (
+          <div
+            className="flex h-full w-full items-center justify-center rounded-lg px-2 text-center"
+            style={{ border: `1px solid ${done.win > 0 ? theme.accent : "rgba(255,255,255,0.15)"}` }}
+          >
+            {done.win > 0 ? (
+              <span className="text-lg font-black" style={{ color: theme.accent }}>
+                WIN {money(displayWin)} · {done.mult.toFixed(2)}×
+              </span>
+            ) : (
+              <span className="text-sm text-white/60">No win — spin again</span>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="mt-3 space-y-2">
         <WagerInput wager={wager} setWager={setWager} cash={cash} disabled={spinning} />
