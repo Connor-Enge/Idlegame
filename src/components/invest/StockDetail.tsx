@@ -66,7 +66,7 @@ export default function StockDetail({ assetId, onBack }: { assetId: string; onBa
       {/* Position */}
       {holding && (
         <Section title="Your position">
-          <div className="grid grid-cols-2 gap-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
             <Metric label="Shares" value={holding.quantity.toFixed(4)} />
             <Metric label="Equity" value={money(holding.quantity * asset.price)} />
             <Metric label="Avg cost" value={money(holding.avgCost)} />
@@ -117,7 +117,7 @@ export default function StockDetail({ assetId, onBack }: { assetId: string; onBa
 
       {/* Stats */}
       <Section title="Stats">
-        <div className="grid grid-cols-2 gap-y-3 text-sm">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           <Metric label="Market cap" value={stats.marketCap} />
           <Metric label="Volume" value={stats.volume} />
           <Metric label="P/E ratio" value={stats.pe} />
@@ -156,8 +156,8 @@ export default function StockDetail({ assetId, onBack }: { assetId: string; onBa
         </Section>
       )}
 
-      {/* Sticky action bar */}
-      <div className="sticky bottom-24 flex gap-3 pt-2">
+      {/* Sticky action bar — opaque footer so it never shows content through it */}
+      <div className="sticky bottom-24 z-20 -mx-4 flex gap-3 border-t border-white/10 bg-bg/95 px-4 py-3 backdrop-blur">
         <button
           onClick={() => setTicket("buy")}
           className="flex-1 rounded-xl py-3 text-base font-bold"

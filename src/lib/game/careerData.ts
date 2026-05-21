@@ -104,18 +104,19 @@ export interface Gig {
   energyCost: number;
   cooldownTicks: number;
   levelRequired: number;
+  skillRequired: number; // min level in `skillId` — gates gigs behind real career progress
 }
 
 export const GIGS: Gig[] = [
-  { id: "rideshare", name: "Rideshare Driving", icon: "🚗", description: "Surge pricing if you time it right.", skillId: "focus", basePay: 90, energyCost: 6, cooldownTicks: 20, levelRequired: 1 },
-  { id: "delivery", name: "Food Delivery", icon: "🛵", description: "Tips reward speed.", skillId: "focus", basePay: 70, energyCost: 5, cooldownTicks: 18, levelRequired: 1 },
-  { id: "dogwalk", name: "Dog Walking", icon: "🐕", description: "Low effort, repeat clients.", skillId: "teamwork", basePay: 60, energyCost: 4, cooldownTicks: 16, levelRequired: 1 },
-  { id: "tutoring", name: "Tutoring", icon: "📖", description: "Explain it simply, get paid.", skillId: "communication", basePay: 150, energyCost: 6, cooldownTicks: 26, levelRequired: 3 },
-  { id: "handyman", name: "Handyman Jobs", icon: "🔧", description: "Fix it, bill for parts.", skillId: "technical", basePay: 180, energyCost: 8, cooldownTicks: 28, levelRequired: 4 },
-  { id: "freelance-dev", name: "Freelance Coding", icon: "💻", description: "Ship a small contract.", skillId: "technical", basePay: 420, energyCost: 9, cooldownTicks: 40, levelRequired: 7 },
-  { id: "consulting", name: "Weekend Consulting", icon: "📋", description: "Bill by the hour, generously.", skillId: "leadership", basePay: 900, energyCost: 10, cooldownTicks: 55, levelRequired: 11 },
-  { id: "speaking", name: "Keynote Speaking", icon: "🎤", description: "Charge for the spotlight.", skillId: "communication", basePay: 2400, energyCost: 12, cooldownTicks: 80, levelRequired: 15 },
-  { id: "advisory", name: "Board Advisory", icon: "🏛️", description: "Lend your name to a startup.", skillId: "networking", basePay: 6500, energyCost: 14, cooldownTicks: 120, levelRequired: 20 },
+  { id: "rideshare", name: "Rideshare Driving", icon: "🚗", description: "Surge pricing if you time it right.", skillId: "focus", basePay: 90, energyCost: 6, cooldownTicks: 20, levelRequired: 1, skillRequired: 0 },
+  { id: "delivery", name: "Food Delivery", icon: "🛵", description: "Tips reward speed.", skillId: "focus", basePay: 70, energyCost: 5, cooldownTicks: 18, levelRequired: 1, skillRequired: 0 },
+  { id: "dogwalk", name: "Dog Walking", icon: "🐕", description: "Low effort, repeat clients.", skillId: "teamwork", basePay: 60, energyCost: 4, cooldownTicks: 16, levelRequired: 1, skillRequired: 0 },
+  { id: "tutoring", name: "Tutoring", icon: "📖", description: "Explain it simply, get paid.", skillId: "communication", basePay: 150, energyCost: 6, cooldownTicks: 26, levelRequired: 3, skillRequired: 2 },
+  { id: "handyman", name: "Handyman Jobs", icon: "🔧", description: "Fix it, bill for parts.", skillId: "technical", basePay: 180, energyCost: 8, cooldownTicks: 28, levelRequired: 4, skillRequired: 3 },
+  { id: "freelance-dev", name: "Freelance Coding", icon: "💻", description: "Ship a small contract.", skillId: "technical", basePay: 420, energyCost: 9, cooldownTicks: 40, levelRequired: 7, skillRequired: 5 },
+  { id: "consulting", name: "Weekend Consulting", icon: "📋", description: "Bill by the hour, generously.", skillId: "leadership", basePay: 900, energyCost: 10, cooldownTicks: 55, levelRequired: 11, skillRequired: 7 },
+  { id: "speaking", name: "Keynote Speaking", icon: "🎤", description: "Charge for the spotlight.", skillId: "communication", basePay: 2400, energyCost: 12, cooldownTicks: 80, levelRequired: 15, skillRequired: 9 },
+  { id: "advisory", name: "Board Advisory", icon: "🏛️", description: "Lend your name to a startup.", skillId: "networking", basePay: 6500, energyCost: 14, cooldownTicks: 120, levelRequired: 20, skillRequired: 12 },
 ];
 
 // ---------------------------------------------------------------------------

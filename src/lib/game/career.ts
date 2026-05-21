@@ -302,6 +302,8 @@ export function gigById(id: string): Gig | undefined {
 export function gigAvailable(state: GameState, gig: Gig): { ok: boolean; reason?: string } {
   if (state.progression.level < gig.levelRequired)
     return { ok: false, reason: `Lv ${gig.levelRequired}` };
+  if (gig.skillRequired > 0 && getSkillLevel(state, gig.skillId) < gig.skillRequired)
+    return { ok: false, reason: `${gig.skillId} ${gig.skillRequired}` };
   if ((state.career.gigCooldownTicks ?? 0) > 0)
     return { ok: false, reason: `${state.career.gigCooldownTicks}s` };
   if (state.stats.energy < gig.energyCost) return { ok: false, reason: "Low energy" };

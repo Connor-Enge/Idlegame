@@ -407,6 +407,8 @@ export function commitGig(state: GameState, gigId: string, position: number): Ac
   if (!gig) return fail(state, "Unknown gig");
   if (state.progression.level < gig.levelRequired)
     return fail(state, `Unlocks at level ${gig.levelRequired}`);
+  if (gig.skillRequired > 0 && getSkillLevel(state, gig.skillId) < gig.skillRequired)
+    return fail(state, `Needs ${gig.skillId} level ${gig.skillRequired}`);
   if (state.career.gigCooldownTicks > 0) return fail(state, "Gig on cooldown");
   if (state.stats.energy < gig.energyCost) return fail(state, "Too tired for a gig");
 

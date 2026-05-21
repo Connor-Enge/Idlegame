@@ -254,8 +254,10 @@ function GigsSection({ state, onPlay }: { state: GameState; onPlay: (gigId: stri
       <SubHeading sub="Quick freelance work — available anytime, on a cooldown.">Side Gigs</SubHeading>
       {visible.map((gig) => {
         const gate = gigAvailable(state, gig);
-        const locked = state.progression.level < gig.levelRequired;
         const skill = SKILLS.find((s) => s.id === gig.skillId);
+        const skillLocked = gig.skillRequired > 0 && getSkillLevel(state, gig.skillId) < gig.skillRequired;
+        const levelLocked = state.progression.level < gig.levelRequired;
+        const locked = levelLocked || skillLocked;
         return (
           <Card key={gig.id} className={locked ? "opacity-60" : ""}>
             <div className="flex items-center justify-between gap-3">
@@ -267,13 +269,20 @@ function GigsSection({ state, onPlay }: { state: GameState; onPlay: (gigId: stri
                 <div className="mt-1 text-[11px] text-muted">
                   {skill?.icon} {skill?.name} · {gig.energyCost}⚡ · up to {money(gig.basePay)}
                 </div>
+                {locked && (
+                  <div className="mt-1 text-[11px] text-danger">
+                    Requires{levelLocked ? ` level ${gig.levelRequired}` : ""}
+                    {levelLocked && skillLocked ? " ·" : ""}
+                    {skillLocked ? ` ${skill?.name} Lv ${gig.skillRequired}` : ""}
+                  </div>
+                )}
               </div>
               <Button
                 disabled={!gate.ok}
                 onClick={() => onPlay(gig.id)}
                 variant={gate.ok ? "primary" : "secondary"}
               >
-                {locked ? `Lv ${gig.levelRequired}` : gate.ok ? "Play" : gate.reason}
+                {levelLocked ? `Lv ${gig.levelRequired}` : skillLocked ? `${skill?.icon} ${gig.skillRequired}` : gate.ok ? "Play" : gate.reason}
               </Button>
             </div>
           </Card>
