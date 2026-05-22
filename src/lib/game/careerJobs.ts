@@ -26,15 +26,26 @@ export interface MinigameDef {
 }
 
 export const MINIGAMES: MinigameDef[] = [
+  // Generic archetypes — used as fallbacks for jobs without a bespoke game yet.
   { id: "clicker", name: "Rapid Tap", unit: "taps", blurb: "Tap as fast as you can before the timer runs out.", basePoints: 40 },
   { id: "timing", name: "Perfect Timing", unit: "points", blurb: "Stop the sweeping marker in the green zone, five rounds.", basePoints: 18 },
   { id: "reaction", name: "Quick Reflex", unit: "points", blurb: "Wait for green, then tap the instant it appears.", basePoints: 16 },
   { id: "memory", name: "Memory Match", unit: "points", blurb: "Repeat the growing sequence of glowing tiles.", basePoints: 14 },
   { id: "whack", name: "Target Rush", unit: "hits", blurb: "Tap the targets that pop up before they vanish.", basePoints: 22 },
   { id: "math", name: "Quick Maths", unit: "solved", blurb: "Solve as many quick sums as you can against the clock.", basePoints: 12 },
+
+  // Bespoke, job-specific games (built one at a time, themed to the role).
+  { id: "lemonade", name: "Lemonade Stand", unit: "cups", blurb: "Pour each cup to the line — hold to pour, release to serve. Overfill and it spills.", basePoints: 14 },
 ];
 
-export const MINIGAME_IDS = MINIGAMES.map((m) => m.id);
+// Generic mechanics rotated through any job that doesn't have a bespoke game.
+const FALLBACK_POOL = ["clicker", "timing", "reaction", "memory", "whack", "math"];
+
+// Per-job bespoke minigame assignments (job index -> minigame id). Jobs not
+// listed here fall back to the generic pool, so the chain is always playable.
+const JOB_MINIGAME: Record<number, string> = {
+  0: "lemonade",
+};
 
 export function minigameById(id: string): MinigameDef {
   return MINIGAMES.find((m) => m.id === id) ?? MINIGAMES[0];
@@ -84,7 +95,8 @@ const JOB_TITLES: Array<[string, string]> = [
 
 function buildJobs(): Job[] {
   return JOB_TITLES.map(([title, icon], index) => {
-    const mg = MINIGAMES[index % MINIGAMES.length];
+    const mgId = JOB_MINIGAME[index] ?? FALLBACK_POOL[index % FALLBACK_POOL.length];
+    const mg = minigameById(mgId);
     // Sessions-to-clear grows gently from 3 (early) to ~12 (late game).
     const sessions = 3 + Math.floor(index / 10);
     const goal = Math.round(mg.basePoints * sessions);
