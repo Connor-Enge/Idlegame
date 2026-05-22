@@ -38,6 +38,13 @@ export const MINIGAMES: MinigameDef[] = [
   { id: "lemonade", name: "Lemonade Stand", unit: "cups", blurb: "Pour each cup to the line — hold to pour, release to serve. Overfill and it spills.", basePoints: 14 },
   { id: "paperroute", name: "Paper Route", unit: "papers", blurb: "Tap each porch to land the paper — they move faster with every delivery.", basePoints: 12 },
   { id: "dogwalk", name: "Dog Walker", unit: "calm", blurb: "Tap to ease the leash and keep tension in the green band without the dog breaking loose.", basePoints: 14 },
+  { id: "lawnmower", name: "Lawn Mower", unit: "mowed", blurb: "Steer between lanes to catch grass and dodge rocks.", basePoints: 13 },
+  { id: "babysitter", name: "Babysitter", unit: "joy", blurb: "Soothe three babies at once before they cry.", basePoints: 14 },
+  { id: "carwash", name: "Car Washer", unit: "spots", blurb: "Scrub every dirty spot clean before more appear.", basePoints: 13 },
+  { id: "dishwash", name: "Dishwasher", unit: "dishes", blurb: "Wash, rinse, dry — in order, as fast as you can.", basePoints: 12 },
+  { id: "busser", name: "Busser", unit: "steady", blurb: "Keep the loaded tray level without dropping it.", basePoints: 14 },
+  { id: "fastfood", name: "Fast Food Cook", unit: "orders", blurb: "Build each burger by tapping ingredients in order.", basePoints: 11 },
+  { id: "barista", name: "Barista", unit: "shots", blurb: "Pull each espresso shot on beat.", basePoints: 13 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -49,6 +56,13 @@ const JOB_MINIGAME: Record<number, string> = {
   0: "lemonade",
   1: "paperroute",
   2: "dogwalk",
+  3: "lawnmower",
+  4: "babysitter",
+  5: "carwash",
+  6: "dishwash",
+  7: "busser",
+  8: "fastfood",
+  9: "barista",
 };
 
 export function minigameById(id: string): MinigameDef {
