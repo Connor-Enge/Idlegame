@@ -36,6 +36,8 @@ export const MINIGAMES: MinigameDef[] = [
 
   // Bespoke, job-specific games (built one at a time, themed to the role).
   { id: "lemonade", name: "Lemonade Stand", unit: "cups", blurb: "Pour each cup to the line — hold to pour, release to serve. Overfill and it spills.", basePoints: 14 },
+  { id: "paperroute", name: "Paper Route", unit: "papers", blurb: "Tap each porch to land the paper — they move faster with every delivery.", basePoints: 12 },
+  { id: "dogwalk", name: "Dog Walker", unit: "calm", blurb: "Tap to ease the leash and keep tension in the green band without the dog breaking loose.", basePoints: 14 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -45,6 +47,8 @@ const FALLBACK_POOL = ["clicker", "timing", "reaction", "memory", "whack", "math
 // listed here fall back to the generic pool, so the chain is always playable.
 const JOB_MINIGAME: Record<number, string> = {
   0: "lemonade",
+  1: "paperroute",
+  2: "dogwalk",
 };
 
 export function minigameById(id: string): MinigameDef {

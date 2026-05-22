@@ -10,6 +10,8 @@ import Memory from "./Memory";
 import Whack from "./Whack";
 import QuickMath from "./QuickMath";
 import Lemonade from "./Lemonade";
+import PaperRoute from "./PaperRoute";
+import DogWalker from "./DogWalker";
 
 // minigameId -> component. Jobs whose mechanic isn't built yet fall back to the
 // clicker, so the chain is always playable. Adding a new mechanic = a new entry.
@@ -21,6 +23,8 @@ const COMPONENTS: Record<string, ComponentType<MinigameProps>> = {
   whack: Whack,
   math: QuickMath,
   lemonade: Lemonade,
+  paperroute: PaperRoute,
+  dogwalk: DogWalker,
 };
 
 export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {
