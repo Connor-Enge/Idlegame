@@ -1,6 +1,5 @@
 import type {
   BusinessType,
-  CareerTrack,
   EducationProgram,
   FeatureFlag,
   MarketAsset,
@@ -24,11 +23,8 @@ export const XP_GROWTH = 1.16; // xp to reach next level multiplies by this
 // just at a calmer rate so wealth compounds over ~30-50h and across lives
 // (via Legacy Points) instead of within a single ~5-8h life. Tune here first.
 // ---------------------------------------------------------------------------
-export const SALARY_SCALE = 0.2; // passive salary while employed
 export const RENT_SCALE = 0.25; // net rent from property
 export const BIZ_PROFIT_SCALE = 0.12; // net business profit per tick
-export const SHIFT_GIG_SCALE = 0.25; // active shift / gig lump-sum payouts
-export const SKILL_XP_SCALE = 0.4; // skill XP earned passively from working shifts
 
 // Net-worth thresholds that permanently unlock each system, in order. These
 // gates pace access: the wealth engines (business, real estate) sit high
@@ -138,96 +134,6 @@ export const EDUCATION: EducationProgram[] = [
     levelRequired: 18,
     studyTicks: 420,
     requires: ["mba"],
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Career tracks — now gated. Service is the only one open at the start.
-// ---------------------------------------------------------------------------
-
-export const CAREER_TRACKS: CareerTrack[] = [
-  {
-    id: "service",
-    name: "Service Industry",
-    description: "No requirements. Everyone starts somewhere.",
-    prestigeRank: 0,
-    levels: [
-      { id: "dishwasher", title: "Dishwasher", tier: 0, baseSalaryPerTick: 2, energyCostPerShift: 8, reputationRequired: 0, promoteAfterShifts: 8 },
-      { id: "line-cook", title: "Line Cook", tier: 1, baseSalaryPerTick: 5, energyCostPerShift: 9, reputationRequired: 25, promoteAfterShifts: 14 },
-      { id: "shift-lead", title: "Shift Lead", tier: 2, baseSalaryPerTick: 9, energyCostPerShift: 7, reputationRequired: 70, promoteAfterShifts: 20 },
-      { id: "gm", title: "General Manager", tier: 3, baseSalaryPerTick: 18, energyCostPerShift: 6, reputationRequired: 160, promoteAfterShifts: 28 },
-    ],
-  },
-  {
-    id: "retail",
-    name: "Retail & Office",
-    description: "Requires a high school diploma.",
-    prestigeRank: 1,
-    requires: { credentials: ["hs"] },
-    levels: [
-      { id: "cashier", title: "Cashier", tier: 0, baseSalaryPerTick: 4, energyCostPerShift: 7, reputationRequired: 0, promoteAfterShifts: 10 },
-      { id: "keyholder", title: "Keyholder", tier: 1, baseSalaryPerTick: 8, energyCostPerShift: 7, reputationRequired: 40, promoteAfterShifts: 16 },
-      { id: "store-mgr", title: "Store Manager", tier: 2, baseSalaryPerTick: 16, energyCostPerShift: 6, reputationRequired: 110, promoteAfterShifts: 24 },
-      { id: "regional", title: "Regional Manager", tier: 3, baseSalaryPerTick: 34, energyCostPerShift: 6, reputationRequired: 260, promoteAfterShifts: 34 },
-    ],
-  },
-  {
-    id: "trades",
-    name: "Skilled Trades",
-    description: "Requires a trade certification.",
-    prestigeRank: 2,
-    requires: { credentials: ["trade"], level: 3 },
-    levels: [
-      { id: "apprentice", title: "Apprentice", tier: 0, baseSalaryPerTick: 7, energyCostPerShift: 9, reputationRequired: 0, promoteAfterShifts: 12 },
-      { id: "journeyman", title: "Journeyman", tier: 1, baseSalaryPerTick: 15, energyCostPerShift: 9, reputationRequired: 60, promoteAfterShifts: 18 },
-      { id: "master", title: "Master Tradesman", tier: 2, baseSalaryPerTick: 30, energyCostPerShift: 8, reputationRequired: 150, promoteAfterShifts: 26 },
-      { id: "contractor", title: "General Contractor", tier: 3, baseSalaryPerTick: 60, energyCostPerShift: 7, reputationRequired: 340, promoteAfterShifts: 38 },
-    ],
-  },
-  {
-    id: "corporate",
-    name: "Corporate",
-    description: "Requires a college degree and proven experience.",
-    prestigeRank: 3,
-    requires: { credentials: ["degree"], level: 6 },
-    levels: [
-      { id: "analyst", title: "Analyst", tier: 0, baseSalaryPerTick: 14, energyCostPerShift: 7, reputationRequired: 0, promoteAfterShifts: 16 },
-      { id: "associate", title: "Associate", tier: 1, baseSalaryPerTick: 28, energyCostPerShift: 7, reputationRequired: 120, promoteAfterShifts: 24 },
-      { id: "manager", title: "Manager", tier: 2, baseSalaryPerTick: 55, energyCostPerShift: 7, reputationRequired: 300, promoteAfterShifts: 34 },
-      { id: "director", title: "Director", tier: 3, baseSalaryPerTick: 110, energyCostPerShift: 6, reputationRequired: 650, promoteAfterShifts: 46 },
-      { id: "vp", title: "Vice President", tier: 4, baseSalaryPerTick: 230, energyCostPerShift: 6, reputationRequired: 1300, promoteAfterShifts: 60 },
-      { id: "cxo", title: "C-Suite Executive", tier: 5, baseSalaryPerTick: 480, energyCostPerShift: 5, reputationRequired: 2600, promoteAfterShifts: 80 },
-    ],
-  },
-  {
-    id: "tech",
-    name: "Tech",
-    description: "Requires a degree; the highest roles want a PhD.",
-    prestigeRank: 4,
-    requires: { credentials: ["degree"], level: 8 },
-    levels: [
-      { id: "jr-dev", title: "Junior Engineer", tier: 0, baseSalaryPerTick: 20, energyCostPerShift: 6, reputationRequired: 0, promoteAfterShifts: 16 },
-      { id: "engineer", title: "Engineer", tier: 1, baseSalaryPerTick: 42, energyCostPerShift: 6, reputationRequired: 140, promoteAfterShifts: 24 },
-      { id: "senior", title: "Senior Engineer", tier: 2, baseSalaryPerTick: 85, energyCostPerShift: 6, reputationRequired: 360, promoteAfterShifts: 34 },
-      { id: "staff", title: "Staff Engineer", tier: 3, baseSalaryPerTick: 170, energyCostPerShift: 5, reputationRequired: 800, promoteAfterShifts: 46 },
-      { id: "principal", title: "Principal / Architect", tier: 4, baseSalaryPerTick: 340, energyCostPerShift: 5, reputationRequired: 1700, promoteAfterShifts: 62 },
-      { id: "cto", title: "CTO", tier: 5, baseSalaryPerTick: 700, energyCostPerShift: 4, reputationRequired: 3400, promoteAfterShifts: 84 },
-    ],
-  },
-  {
-    id: "finance",
-    name: "High Finance",
-    description: "Requires a finance license and a serious reputation.",
-    prestigeRank: 5,
-    requires: { credentials: ["series7"], level: 10, reputation: 150 },
-    levels: [
-      { id: "trader", title: "Trader", tier: 0, baseSalaryPerTick: 30, energyCostPerShift: 8, reputationRequired: 0, promoteAfterShifts: 18 },
-      { id: "pm", title: "Portfolio Manager", tier: 1, baseSalaryPerTick: 70, energyCostPerShift: 7, reputationRequired: 200, promoteAfterShifts: 28 },
-      { id: "md", title: "Managing Director", tier: 2, baseSalaryPerTick: 160, energyCostPerShift: 6, reputationRequired: 500, promoteAfterShifts: 40 },
-      { id: "partner", title: "Partner", tier: 3, baseSalaryPerTick: 360, energyCostPerShift: 5, reputationRequired: 1200, promoteAfterShifts: 56 },
-      { id: "founder", title: "Fund Founder", tier: 4, baseSalaryPerTick: 820, energyCostPerShift: 4, reputationRequired: 2800, promoteAfterShifts: 76 },
-      { id: "tycoon", title: "Financial Tycoon", tier: 5, baseSalaryPerTick: 1800, energyCostPerShift: 4, reputationRequired: 6000, promoteAfterShifts: 100 },
-    ],
   },
 ];
 

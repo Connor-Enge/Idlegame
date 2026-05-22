@@ -17,35 +17,6 @@ export interface PlayerStats {
 }
 
 // ---------------------------------------------------------------------------
-// Jobs & Career (corporate ladder)
-// ---------------------------------------------------------------------------
-
-export interface JobLevel {
-  id: string;
-  title: string;
-  tier: number; // position in the ladder, 0 = entry
-  baseSalaryPerTick: number; // passive income while employed
-  energyCostPerShift: number;
-  reputationRequired: number;
-  promoteAfterShifts: number; // shifts worked before promotion is offered
-}
-
-export interface TrackRequirement {
-  credentials?: string[]; // education ids that must be owned
-  level?: number; // minimum player level
-  reputation?: number; // minimum reputation
-}
-
-export interface CareerTrack {
-  id: string;
-  name: string;
-  description: string;
-  prestigeRank: number; // ordering for display: higher = more prestigious
-  requires?: TrackRequirement;
-  levels: JobLevel[];
-}
-
-// ---------------------------------------------------------------------------
 // Progression — player level, education and prestige
 // ---------------------------------------------------------------------------
 
@@ -92,71 +63,15 @@ export interface OfflineReport {
   levels: number;
 }
 
-// A workplace project the player has accepted: completes over several shifts
-// for a lump-sum reward. Optional layer on top of regular shift work.
-export interface ActiveProject {
-  projectId: string;
-  shiftsRemaining: number;
-  totalShifts: number;
-}
-
+// Career v3: a linear chain of 100 jobs, each its own minigame. You play the
+// current job's minigame to accumulate `progress`; hitting the job's goal
+// unlocks the next. Income is active-only. Everything resets each life.
 export interface PlayerCareer {
-  trackId: string | null;
-  levelIndex: number;
-  shiftsWorked: number;
-  employedSince: number | null;
-  // ----- Career system v2 -----
-  skills: Record<string, number>; // skillId -> accumulated skill XP
-  performance: number; // 0..100 review score at current job
-  morale: number; // 0..100, scales pay and gates raises
-  salaryMultiplier: number; // raises stack here (starts at 1)
-  shiftStreak: number; // consecutive non-failed shifts
-  bestShiftStreak: number;
-  totalEarned: number; // lifetime gross career income (shifts + gigs)
-  shiftsTotal: number; // lifetime shifts across all jobs
-  gigsCompleted: number;
-  projectsCompleted: number;
-  raisesNegotiated: number;
-  perks: string[]; // purchased workplace perk ids
-  activeProject: ActiveProject | null;
-  gigCooldownTicks: number; // ticks until next gig is available
-  reviewCooldownTicks: number; // ticks until next raise/review attempt
-  restCooldownTicks: number; // ticks until you can fully rest again
-}
-
-export type ShiftQuality = "perfect" | "good" | "ok" | "miss";
-
-export interface ShiftMoment {
-  taskId: string;
-  skillId: string;
-  quality: ShiftQuality;
-}
-
-export interface ShiftResult {
-  trackId: string;
-  title: string;
-  moments: ShiftMoment[];
-  score: number; // 0..1 aggregate performance this shift
-  cash: number;
-  reputation: number;
-  performanceGain: number;
-  skillXp: Record<string, number>;
-  energyCost: number;
-  moraleChange: number;
-  promoted: boolean;
-  newTitle?: string;
-  projectCompleted?: { name: string; bonus: number };
-}
-
-export interface GigResult {
-  gigId: string;
-  name: string;
-  skillId: string;
-  quality: ShiftQuality;
-  cash: number;
-  skillXp: number;
-  reputation: number;
-  energyCost: number;
+  jobIndex: number; // current job in the chain (0..JOB_COUNT-1)
+  progress: number; // metric points accumulated toward the current job's goal
+  jobsCleared: number; // goals beaten this life
+  roundsPlayed: number; // total minigame rounds played this life
+  totalEarned: number; // lifetime cash earned from jobs this life
 }
 
 // ---------------------------------------------------------------------------

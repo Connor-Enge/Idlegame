@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, SectionTitle, Pill, ProgressBar } from "@/components/ui";
-import { BUSINESS_TYPES, CAREER_TRACKS, RETIRE_THRESHOLD } from "@/lib/game/data";
+import { BUSINESS_TYPES, RETIRE_THRESHOLD } from "@/lib/game/data";
+import { jobByIndex } from "@/lib/game/careerJobs";
 import { canRetire, legacyGain, nextUnlock, xpToNext } from "@/lib/game/progression";
 
 export default function HomePage() {
@@ -14,8 +15,7 @@ export default function HomePage() {
 
   const { stats, career, economy, holdings, properties, businesses, progression } = state;
 
-  const track = CAREER_TRACKS.find((t) => t.id === career.trackId);
-  const jobTitle = track ? track.levels[career.levelIndex].title : "Unemployed";
+  const jobTitle = jobByIndex(career.jobIndex).title;
   const nu = nextUnlock(state);
   const retireReady = canRetire(state);
 

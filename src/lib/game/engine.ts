@@ -5,7 +5,7 @@ import {
   PROPERTIES,
   RENT_SCALE,
 } from "./data";
-import { freshCareer, normalizeCareer, passiveSalaryPerTick } from "./career";
+import { freshCareer, normalizeCareer } from "./career";
 import { initialEconomy, stepAsset, stepEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
 import {
@@ -19,7 +19,7 @@ import {
 } from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 export function createInitialState(playerId: string): GameState {
   const now = Date.now();
@@ -80,9 +80,8 @@ export function normalizeState(s: GameState): GameState {
   if (p.level == null || p.level < 1) p.level = 1;
   if (p.xp == null) p.xp = 0;
 
-  // Career sub-state migration.
-  if (!s.career) s.career = freshCareer();
-  else normalizeCareer(s.career);
+  // Career sub-state migration (v4 replaced the whole career model).
+  s.career = normalizeCareer(s.career);
 
   // Life/mortality migration for saves created before it existed.
   if (!s.life) {
@@ -165,22 +164,8 @@ function stepOnce(s: GameState): GameState {
   const mult = incomeMultiplier(s.progression);
   let income = 0;
 
-  // 2. Salary (passive while employed). Raises, morale and perks all scale it.
-  if (s.career.trackId) {
-    const salary = passiveSalaryPerTick(s);
-    if (salary > 0) {
-      income += salary;
-      s.career.totalEarned += salary;
-      s.stats.reputation += 0.2;
-    }
-  }
-
-  // Morale drifts toward a 60 baseline; cooldowns tick down.
-  s.career.morale += (60 - s.career.morale) * 0.01;
-  s.career.morale = Math.max(0, Math.min(100, s.career.morale));
-  if (s.career.gigCooldownTicks > 0) s.career.gigCooldownTicks -= 1;
-  if (s.career.reviewCooldownTicks > 0) s.career.reviewCooldownTicks -= 1;
-  if (s.career.restCooldownTicks > 0) s.career.restCooldownTicks -= 1;
+  // Careers are now active-only — income from jobs comes from playing their
+  // minigames (see actions.workJob), not from passive salary while idle.
 
   // 3. Real estate net rent (occupancy is stochastic).
   for (const owned of s.properties) {

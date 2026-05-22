@@ -1,5 +1,4 @@
 import {
-  CAREER_TRACKS,
   EDUCATION,
   FEATURE_UNLOCKS,
   LEGACY_INCOME_BONUS,
@@ -8,7 +7,6 @@ import {
   XP_GROWTH,
 } from "./data";
 import type {
-  CareerTrack,
   EducationProgram,
   FeatureFlag,
   GameState,
@@ -75,30 +73,6 @@ export function canStartStudy(
   }
   if (state.stats.cash < edu.cost) return { ok: false, reason: "Not enough cash" };
   return { ok: true };
-}
-
-// ---- Career gating ----
-
-export function trackUnlocked(
-  state: GameState,
-  track: CareerTrack,
-): { ok: boolean; reason?: string } {
-  const r = track.requires;
-  if (!r) return { ok: true };
-  const p = state.progression;
-  if (r.level && p.level < r.level) return { ok: false, reason: `Level ${r.level}` };
-  if (r.reputation && state.stats.reputation < r.reputation)
-    return { ok: false, reason: `${r.reputation} reputation` };
-  for (const c of r.credentials ?? []) {
-    if (!p.credentials.includes(c)) {
-      return { ok: false, reason: educationById(c)?.name ?? c };
-    }
-  }
-  return { ok: true };
-}
-
-export function trackById(id: string | null): CareerTrack | undefined {
-  return id ? CAREER_TRACKS.find((t) => t.id === id) : undefined;
 }
 
 // ---- Feature unlocks (sticky once reached) ----
