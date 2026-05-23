@@ -96,3 +96,39 @@ export function Pill({ children, tone = "neutral" }: { children: ReactNode; tone
         : "bg-white/10 text-muted";
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{children}</span>;
 }
+
+// Compact "how this section works" panel — three step tiles plus optional
+// bullet rules. Used at the top of every major feature page so a new player
+// can see the loop at a glance instead of piecing it together.
+export function Explainer({
+  title = "How it works",
+  steps,
+  rules,
+}: {
+  title?: string;
+  steps: Array<{ n: string; icon: string; label: string; body: string }>;
+  rules?: string[];
+}) {
+  return (
+    <Card className="mb-3 bg-white/[0.03]">
+      <div className="text-[11px] uppercase tracking-wider text-muted">{title}</div>
+      <div className={`mt-2 grid gap-2 text-[11px] ${steps.length === 3 ? "grid-cols-3" : steps.length === 2 ? "grid-cols-2" : "grid-cols-4"}`}>
+        {steps.map((s) => (
+          <div key={s.n} className="rounded-lg bg-white/5 p-2">
+            <div className="flex items-center gap-1 text-[10px] font-bold text-muted">
+              <span>{s.n}</span>
+              <span className="text-base">{s.icon}</span>
+            </div>
+            <div className="mt-1 text-xs font-semibold">{s.label}</div>
+            <div className="mt-0.5 text-[10px] text-muted">{s.body}</div>
+          </div>
+        ))}
+      </div>
+      {rules && rules.length > 0 && (
+        <ul className="mt-3 space-y-0.5 text-[11px] text-muted">
+          {rules.map((r, i) => (<li key={i}>• {r}</li>))}
+        </ul>
+      )}
+    </Card>
+  );
+}

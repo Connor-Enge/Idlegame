@@ -2,7 +2,7 @@
 
 import { useGame } from "@/lib/store";
 import { pct } from "@/lib/format";
-import { Card, SectionTitle, Pill } from "@/components/ui";
+import { Card, Explainer, SectionTitle, Pill } from "@/components/ui";
 
 const PHASE_BLURB: Record<string, string> = {
   boom: "Risk-on. Everything goes up. Enjoy it while it lasts.",
@@ -21,6 +21,19 @@ export default function EconomyPage() {
   return (
     <div className="space-y-3">
       <SectionTitle sub="One simulated world. Everything reacts to it.">Global Economy</SectionTitle>
+
+      <Explainer
+        title="How the economy affects you"
+        steps={[
+          { n: "📊", icon: "🔄", label: "Phase", body: "Cycles recovery → expansion → boom → peak → recession → depression." },
+          { n: "🌐", icon: "📈", label: "Multipliers", body: "GDP boosts business revenue; inflation lifts rent; rates hit bonds." },
+          { n: "📰", icon: "⚡", label: "Events", body: "Sector boosts and shocks fire at random; check News below." },
+        ]}
+        rules={[
+          "Market sentiment (top right) drives prices. Bonds + gold move against it; crypto moves with it × 1.4.",
+          "Read-only — you don't control the economy, but you can position your portfolio for the phase.",
+        ]}
+      />
 
       <Card>
         <div className="flex items-center justify-between">

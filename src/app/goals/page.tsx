@@ -2,7 +2,7 @@
 
 import { useGame } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Card, SectionTitle, ProgressBar } from "@/components/ui";
+import { Card, Explainer, SectionTitle, ProgressBar } from "@/components/ui";
 import { ACHIEVEMENTS, TIER_COLOR } from "@/lib/game/achievements";
 
 export default function GoalsPage() {
@@ -16,6 +16,15 @@ export default function GoalsPage() {
   return (
     <div className="space-y-3">
       <SectionTitle sub={`${done} / ${total} unlocked`}>Goals</SectionTitle>
+
+      <Explainer
+        title="How goals work"
+        steps={[
+          { n: "1", icon: "🎯", label: "Hit it", body: "Goals trigger automatically when you meet the condition." },
+          { n: "2", icon: "🎁", label: "Reward", body: "Cash, luck, or legacy points apply instantly." },
+          { n: "3", icon: "🔓", label: "Permanent", body: "Survive death — earned goals stay across lives." },
+        ]}
+      />
 
       <Card>
         <ProgressBar value={(done / total) * 100} />

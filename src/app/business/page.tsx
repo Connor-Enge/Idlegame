@@ -2,7 +2,7 @@
 
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill, LockedScreen, ProgressBar } from "@/components/ui";
+import { Button, Card, SectionTitle, Pill, LockedScreen, ProgressBar, Explainer } from "@/components/ui";
 import { BUSINESS_TYPES, FEATURE_UNLOCKS } from "@/lib/game/data";
 import {
   BANKRUPT_GRACE_TICKS,
@@ -44,6 +44,21 @@ export default function BusinessPage() {
       <SectionTitle sub="Build income engines that work while you sleep. Don't let any go bankrupt.">
         Businesses
       </SectionTitle>
+
+      <Explainer
+        title="How businesses work"
+        steps={[
+          { n: "1", icon: "🛒", label: "Buy", body: "Pick a business from the marketplace." },
+          { n: "2", icon: "💵", label: "Earn", body: "Profit fills its reserve; overflow pays you." },
+          { n: "3", icon: "📈", label: "Grow", body: "Upgrade, market, expand, IPO when ready." },
+        ]}
+        rules={[
+          "Each business has a unique mechanic (markup, members, quality, hype, occupancy). Watch the bar — neglect makes it lose money.",
+          "Events pop up — pick a response (or pay one) before they drain reserve.",
+          "Reserve below zero for ~90s = bankruptcy. Cash payouts only come from healthy businesses.",
+          "Hire a manager for permanent buffs. Expand to multi-location chains (10 max). IPO converts to passive dividend.",
+        ]}
+      />
 
       {businesses.length > 0 && (
         <div className="space-y-3">

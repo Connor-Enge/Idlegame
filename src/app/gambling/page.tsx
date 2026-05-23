@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { SectionTitle } from "@/components/ui";
+import { Explainer, SectionTitle } from "@/components/ui";
 import CoinFlip from "@/components/casino/CoinFlip";
 import Dice from "@/components/casino/Dice";
 import SlotsHub from "@/components/casino/SlotsHub";
@@ -42,6 +42,21 @@ export default function GamblingPage() {
   return (
     <div className="space-y-3">
       <SectionTitle sub="Five games. The house always wins. Probably.">Casino</SectionTitle>
+
+      <Explainer
+        title="How the casino works"
+        steps={[
+          { n: "1", icon: "🎮", label: "Pick a game", body: "Slots, roulette, blackjack, dice, or coin flip." },
+          { n: "2", icon: "💵", label: "Set wager", body: "Higher bet = bigger swings either way." },
+          { n: "3", icon: "🎲", label: "Play", body: "Win or lose; payouts settle to cash instantly." },
+        ]}
+        rules={[
+          "Slots run ~98% RTP — house edge is small but real. Long sessions trend down.",
+          "Bigger bets ≠ better odds. Bankroll management matters.",
+          "Luck stat from achievements nudges your odds; doesn't break math.",
+        ]}
+      />
+
       <div className="grid grid-cols-2 gap-3">
         {GAMES.map((g) => (
           <button

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill, ProgressBar } from "@/components/ui";
+import { Button, Card, Explainer, SectionTitle, Pill, ProgressBar } from "@/components/ui";
 import { BUSINESS_TYPES, FEATURE_UNLOCKS, RETIRE_THRESHOLD } from "@/lib/game/data";
 import { jobByIndex } from "@/lib/game/careerJobs";
 import { canRetire, hasFeature, legacyGain, nextUnlock, xpToNext } from "@/lib/game/progression";
@@ -32,6 +32,19 @@ export default function HomePage() {
   return (
     <div className="space-y-3">
       <SectionTitle sub="Your empire, at a glance">Gambler&apos;s Paradise</SectionTitle>
+
+      <Explainer
+        title="How the game works"
+        steps={[
+          { n: "1", icon: "💼", label: "Earn", body: "Climb the career chain (active) or stack businesses & investments (passive)." },
+          { n: "2", icon: "📈", label: "Grow", body: "Cash unlocks investing → real estate → businesses by net-worth gates." },
+          { n: "3", icon: "✨", label: "Retire", body: "Reset for Legacy Points — permanent +2% income each, forever." },
+        ]}
+        rules={[
+          "Lives are short (~37 min) — death is automatic. Net worth converts to Legacy Points and a new life starts.",
+          "Tiles with 🔒 need a higher net worth before they unlock.",
+        ]}
+      />
 
       <Card>
         <div className="flex items-center justify-between">

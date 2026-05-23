@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, Pill, ProgressBar } from "@/components/ui";
+import { Button, Card, Explainer, Pill, ProgressBar } from "@/components/ui";
 import { EDUCATION } from "@/lib/game/data";
 import { JOBS, JOB_COUNT, jobByIndex, minigameById } from "@/lib/game/careerJobs";
 import { currentJob, currentMinigame, jobProgressPct, isFinalJob } from "@/lib/game/career";
@@ -74,21 +74,19 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {/* How careers work — compact, always visible. Three-step loop + the
-          two side rules that aren't obvious from the rest of the UI. */}
-      <Card className="mb-3 bg-white/[0.03]">
-        <div className="text-[11px] uppercase tracking-wider text-muted">How careers work</div>
-        <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-          <Step n="1" icon="▶️" label="Play" body="Tap Work to play this job's minigame." />
-          <Step n="2" icon="📈" label="Progress" body="Each round earns cash and fills the goal bar." />
-          <Step n="3" icon="🎉" label="Promote" body="Hit the goal to unlock the next job." />
-        </div>
-        <ul className="mt-3 space-y-0.5 text-[11px] text-muted">
-          <li>• Cleared jobs (below) can be replayed any time for cash + XP — they don't advance the chain.</li>
-          <li>• Some jobs need a credential (🪪 chip) — study below to unlock them.</li>
-          <li>• Higher jobs pay more per round. Better play (more points) = more cash.</li>
-        </ul>
-      </Card>
+      <Explainer
+        title="How careers work"
+        steps={[
+          { n: "1", icon: "▶️", label: "Play", body: "Tap Work to play this job's minigame." },
+          { n: "2", icon: "📈", label: "Progress", body: "Each round earns cash and fills the goal bar." },
+          { n: "3", icon: "🎉", label: "Promote", body: "Hit the goal to unlock the next job." },
+        ]}
+        rules={[
+          "Cleared jobs (below) can be replayed any time for cash + XP — they don't advance the chain.",
+          "Some jobs need a credential (🪪 chip) — study below to unlock them.",
+          "Higher jobs pay more per round. Better play (more points) = more cash.",
+        ]}
+      />
 
       {/* Current job */}
       <Card className="border-accent/30">
@@ -255,15 +253,3 @@ function SubHeading({ children, sub }: { children: React.ReactNode; sub?: string
   );
 }
 
-function Step({ n, icon, label, body }: { n: string; icon: string; label: string; body: string }) {
-  return (
-    <div className="rounded-lg bg-white/5 p-2">
-      <div className="flex items-center gap-1 text-[10px] font-bold text-muted">
-        <span>{n}</span>
-        <span className="text-base">{icon}</span>
-      </div>
-      <div className="mt-1 text-xs font-semibold">{label}</div>
-      <div className="mt-0.5 text-[10px] text-muted">{body}</div>
-    </div>
-  );
-}

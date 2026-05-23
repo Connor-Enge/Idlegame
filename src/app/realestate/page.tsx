@@ -2,7 +2,7 @@
 
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
-import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
+import { Button, Card, SectionTitle, Pill, LockedScreen, Explainer } from "@/components/ui";
 import { FEATURE_UNLOCKS, PROPERTIES } from "@/lib/game/data";
 import { educationById, hasFeature } from "@/lib/game/progression";
 
@@ -27,6 +27,20 @@ export default function RealEstatePage() {
   return (
     <div className="space-y-3">
       <SectionTitle sub="Own the land. Collect the rent.">Real Estate</SectionTitle>
+
+      <Explainer
+        title="How real estate works"
+        steps={[
+          { n: "1", icon: "🛒", label: "Buy", body: "Cash outright, or 20% down on a mortgage." },
+          { n: "2", icon: "🏷️", label: "Rent", body: "List for rent or sit on it for appreciation." },
+          { n: "3", icon: "💵", label: "Collect", body: "Rent trickles every tick; value drifts with the market." },
+        ]}
+        rules={[
+          "Mortgages pay down a tiny bit each tick — interest is folded in.",
+          "Occupancy is stochastic: tenants come and go, dry months happen.",
+          "Commercial listings need a Real Estate License — study it on the Career page.",
+        ]}
+      />
 
       {properties.length > 0 && (
         <div className="space-y-2">

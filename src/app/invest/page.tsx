@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useGame } from "@/lib/store";
 import { money, pct } from "@/lib/format";
-import { LockedScreen } from "@/components/ui";
+import { Explainer, LockedScreen } from "@/components/ui";
 import { FEATURE_UNLOCKS } from "@/lib/game/data";
 import { hasFeature } from "@/lib/game/progression";
 import { buyingPower } from "@/lib/game/investing";
@@ -128,6 +128,21 @@ export default function InvestPage() {
           </div>
         </button>
       </div>
+
+      <Explainer
+        title="How investing works"
+        steps={[
+          { n: "1", icon: "🔍", label: "Browse", body: "Tap any listing to see the chart and details." },
+          { n: "2", icon: "💵", label: "Buy", body: "Purchase shares at the current market price." },
+          { n: "3", icon: "📈", label: "Sell", body: "Close the position whenever — profit is yours." },
+        ]}
+        rules={[
+          "Prices are SHARED — every player sees the same market on every tick.",
+          "Stocks can crash to bankruptcy. Delisted shares are worthless; a fresh procedural IPO takes the slot.",
+          "🪪-tagged listings need a credential. 🔒-tagged need a player level.",
+          "Yield-paying stocks trickle dividends to cash. Robinhood Gold = margin + interest on cash.",
+        ]}
+      />
 
       <SearchBar query={query} setQuery={setQuery} />
 
