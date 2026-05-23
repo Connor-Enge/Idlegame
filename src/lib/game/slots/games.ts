@@ -189,20 +189,23 @@ const CAP = 8000;
 const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 
 // Per-game RTP calibration. Every game's payouts are scaled by this so the
-// long-run return-to-player sits around ~90% (house edge ~10%). Tuned against
-// a Monte-Carlo probe; adjust here to retune without touching paytables.
+// long-run return-to-player targets 98% (house edge ~2%). Tuned against a
+// Monte-Carlo probe averaging multiple 50k-spin runs per game. High-variance
+// games (jackpot wheel, expanding-symbol free spins) swing ±5-10% per sample
+// even with that many spins, so the values below are centered on the long-run
+// expectation rather than chasing any single run's noise.
 const CAL: Record<string, number> = {
-  scatter: 0.000968,
-  megaways: 0.02236,
-  cluster: 3.16,
-  holdwin: 0.0407,
-  cascade: 0.00649,
-  book: 0.554,
-  jackpot: 1.778,
-  ways243: 0.1415,
-  video: 0.1731,
-  classic: 0.78,
-  shadows: 0.926,
+  scatter: 0.001073,
+  megaways: 0.02457,
+  cluster: 3.516,
+  holdwin: 0.0442,
+  cascade: 0.00712,
+  book: 0.558,
+  jackpot: 1.813,
+  ways243: 0.1513,
+  video: 0.1852,
+  classic: 0.865,
+  shadows: 1.035,
 };
 
 const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
