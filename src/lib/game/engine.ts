@@ -50,12 +50,15 @@ export function createInitialState(playerId: string): GameState {
 
 // A new life: full reset (like prestige) but carrying legacy credits forward
 // and recording a death recap. Triggered when the player dies of old age.
+// Permanent things — achievements, legacy points, retirements counter, the
+// playerId itself — survive across lives. Everything else resets.
 function rebirth(prev: GameState): GameState {
   const netWorth = computeNetWorth(prev);
   const credits = lifeCredits(netWorth);
   const fresh = createInitialState(prev.playerId);
   fresh.progression.legacyPoints = prev.progression.legacyPoints + credits;
   fresh.progression.retirements = prev.progression.retirements + 1;
+  fresh.progression.achievements = [...prev.progression.achievements];
   fresh.life.generation = prev.life.generation + 1;
   fresh.life.deathReport = { age: Math.floor(currentAge(prev.life)), netWorth, credits };
   return fresh;

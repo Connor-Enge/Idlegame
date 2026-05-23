@@ -23,6 +23,19 @@ function newAnonId(): string {
   return "p_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
+// "Most progressed" comparator used when reconciling local vs server saves.
+// Net worth alone is wrong for a prestige game — a freshly-reborn life with
+// $500 cash and 5 legacy points is MORE progress than the same player's
+// pre-death save with $1M and zero legacy. Sort by (legacy, retirements,
+// netWorth) so post-prestige state always wins reconciliation.
+function progressScore(s: GameState | null | undefined): number {
+  if (!s) return -1;
+  const legacy = s.progression?.legacyPoints ?? 0;
+  const reborn = s.progression?.retirements ?? 0;
+  const nw = s.stats?.netWorth ?? 0;
+  return legacy * 1e12 + reborn * 1e9 + nw;
+}
+
 function getStoredPlayerId(): string {
   if (typeof window === "undefined") return "server";
   let id = localStorage.getItem(LS_PLAYER);
@@ -141,7 +154,8 @@ export const useGame = create<GameStore>((set, get) => ({
     fetch(`/api/state?playerId=${encodeURIComponent(playerId)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.state && data.state.stats.netWorth > (get().state?.stats.netWorth ?? 0)) {
+        const cur = get().state;
+        if (data?.state && progressScore(data.state) > progressScore(cur)) {
           set({ state: normalizeState(data.state) });
         }
       })
@@ -167,6 +181,7 @@ export const useGame = create<GameStore>((set, get) => ({
   setState: (s) => set({ state: s }),
 
   run: (result, opts) => {
+    const prev = get().state;
     const newly = evaluateAchievements(result.state);
     // Casino games render their own in-view result, so they commit silently —
     // only achievement toasts still surface. Other actions keep their toast.
@@ -177,12 +192,23 @@ export const useGame = create<GameStore>((set, get) => ({
       recentAchievement: newly[0] ?? get().recentAchievement,
     });
     persistLocal(result.state);
+    // Prestige action just fired (retirements bumped). Force a server save so
+    // the new life can't get clobbered by a reload reading stale server state.
+    if ((result.state.progression.retirements ?? 0) > (prev?.progression.retirements ?? 0)) {
+      void get().save();
+    }
   },
 
   tick: () => {
     const s = get().state;
     if (!s) return;
     const next = advance(s, 1);
+    // Death just happened (retirements counter ticked up this frame): force
+    // an immediate server save so a refresh in the next few seconds can't
+    // resurrect the previous life from a stale server snapshot.
+    if (next.progression.retirements > s.progression.retirements) {
+      void get().save();
+    }
     const newly = evaluateAchievements(next);
     set({
       state: next,
@@ -260,7 +286,7 @@ export const useGame = create<GameStore>((set, get) => ({
 
     // Adopt whichever save has more progress; migrate local anon progress up.
     let chosen: GameState;
-    if (serverState && local && serverState.stats.netWorth >= local.stats.netWorth) {
+    if (serverState && local && progressScore(serverState) >= progressScore(local)) {
       chosen = serverState;
     } else if (local) {
       chosen = { ...local, playerId: account.id };

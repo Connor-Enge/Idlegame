@@ -591,6 +591,9 @@ export function retire(state: GameState): ActionResult {
   const fresh = createInitialState(state.playerId);
   fresh.progression.legacyPoints = state.progression.legacyPoints + gain;
   fresh.progression.retirements = state.progression.retirements + 1;
+  // Earned achievements persist across prestige — they're permanent milestones.
+  fresh.progression.achievements = [...state.progression.achievements];
+  fresh.life.generation = state.life.generation + 1;
   return {
     state: fresh,
     ok: true,
