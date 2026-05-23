@@ -239,6 +239,43 @@ const EVENT_POOL: EventTemplate[] = [
       { label: "Soft mention", effect: { mStateDelta: 12 } },
     ],
   },
+  {
+    id: "key-employee", title: "Star Hire Available", icon: "🌟",
+    description: "A top-tier candidate is interviewing nearby. Snap them up?",
+    weight: 0.0004,
+    options: [
+      { label: "Sign them on", effect: { mStateDelta: 18 }, costScale: 0.3 },
+      { label: "Pass", effect: {} },
+    ],
+  },
+  {
+    id: "windfall", title: "Tax Refund", icon: "💰",
+    description: "The accountant found a deduction. Free money lands in the books.",
+    weight: 0.0003,
+    options: [
+      { label: "Bank it", effect: { reserveDelta: 5000 } },
+    ],
+  },
+  {
+    id: "competitor-fail", title: "Competitor Folded", icon: "🏚️",
+    description: "A rival went under — their customers are looking for somewhere new.",
+    weight: 0.0004,
+    options: [
+      { label: "Welcome them in", effect: { mStateDelta: 25 } },
+      { label: "Aggressive ad buy", effect: { mStateDelta: 40 }, costScale: 0.18 },
+    ],
+  },
+  {
+    id: "regulation", title: "New Regulation", icon: "📜",
+    description: "Compliance just got more expensive. Lobby, comply, or fight it.",
+    weight: 0.0005,
+    reserveDrainPerTick: 5,
+    options: [
+      { label: "Lobby your way out", effect: {}, costScale: 0.4 },
+      { label: "Comply", effect: { reserveDelta: -3000 } },
+      { label: "Ignore (gamble)", effect: { mStateDelta: -10, reserveDelta: -1000 } },
+    ],
+  },
 ];
 
 function pickEvent(business: OwnedBusiness, def: { mechanic: BusinessMechanic }): BizEvent | null {
@@ -275,6 +312,59 @@ function pickEvent(business: OwnedBusiness, def: { mechanic: BusinessMechanic })
 
 export const BANKRUPT_GRACE_TICKS = 90; // ~1.5 minutes of red before delisting
 
+// Multi-location: each new outlet beyond the first contributes 95% of the
+// last one's economics (diminishing returns), so chains scale meaningfully
+// but a single mega-chain doesn't dwarf the rest of the portfolio.
+const LOC_DECAY = 0.95;
+export function locationsFactor(locations: number): number {
+  // 1 location → 1.0; 5 → ~4.5; 10 → ~8.0
+  let total = 0;
+  for (let i = 0; i < Math.max(1, locations); i++) total += Math.pow(LOC_DECAY, i);
+  return total;
+}
+export function expansionCost(b: OwnedBusiness): number {
+  const def = BUSINESS_TYPES.find((x) => x.id === b.businessId);
+  if (!def) return Infinity;
+  // Each new location costs 75% of startup × an inflating multiplier.
+  return Math.round(def.startupCost * 0.75 * Math.pow(1.3, b.locations));
+}
+export const MAX_LOCATIONS = 10;
+
+// Category synergy: each owned business in the same category buffs the
+// others by 5%. Owning 3 cafes nets each a +10% revenue bonus.
+const SYNERGY_PER_PEER = 0.05;
+export function categorySynergyMult(category: string, s: GameState): number {
+  let n = 0;
+  for (const b of s.businesses) {
+    const d = BUSINESS_TYPES.find((x) => x.id === b.businessId);
+    if (d && d.category === category) n++;
+  }
+  return 1 + Math.max(0, n - 1) * SYNERGY_PER_PEER;
+}
+
+// IPO: convert a profitable business to a passive dividend stream. The
+// player gets a one-time cash injection ≈ several years' projected profit;
+// the business keeps paying ~30% of that profit forever, but the player
+// gives up management (no mechanic, no events, no upgrades).
+export const IPO_DIVIDEND_RATIO = 0.35;
+export const IPO_MIN_LEVEL = 3;
+export const IPO_MIN_LOCATIONS = 2;
+export function ipoEligible(b: OwnedBusiness): { ok: boolean; reason?: string } {
+  if (b.isPublic) return { ok: false, reason: "Already public" };
+  if (b.level < IPO_MIN_LEVEL) return { ok: false, reason: `Need level ${IPO_MIN_LEVEL}` };
+  if (b.locations < IPO_MIN_LOCATIONS) return { ok: false, reason: `Need ${IPO_MIN_LOCATIONS} locations` };
+  if (b.reserve < 0) return { ok: false, reason: "Books in the red" };
+  return { ok: true };
+}
+export function ipoValuation(b: OwnedBusiness): number {
+  const def = BUSINESS_TYPES.find((x) => x.id === b.businessId);
+  if (!def) return 0;
+  // ~12 years (4380 ticks) of expected gross revenue at current scale.
+  const locFactor = locationsFactor(b.locations);
+  const grossPerTick = def.baseRevenuePerTick * b.level * locFactor;
+  return Math.round(grossPerTick * 4380 * 0.55); // 55% of 12 years gross
+}
+
 // ---------------------------------------------------------------------------
 // Per-tick simulation step for one owned business. Returns the NEW snapshot
 // (immutable transform). Bankruptcies are flagged via b.redTicks crossing the
@@ -290,6 +380,16 @@ export interface BusinessTickResult {
 export function stepBusiness(b: OwnedBusiness, s: GameState): BusinessTickResult {
   const def = BUSINESS_TYPES.find((x) => x.id === b.businessId);
   if (!def) return { next: b, cashDelta: 0, bankrupt: false };
+
+  // Public (IPO'd) businesses are pure passive dividend — no mechanic, no
+  // events, no manager, no bankruptcy. Pay out a flat fraction of base revenue
+  // each tick scaled by locations.
+  if (b.isPublic) {
+    const locFactor = locationsFactor(b.locations);
+    const dividend = def.baseRevenuePerTick * b.level * locFactor * IPO_DIVIDEND_RATIO * (1 + s.economy.gdpGrowth) * BIZ_PROFIT_SCALE;
+    return { next: b, cashDelta: dividend, bankrupt: false };
+  }
+
   const mech = MECHANICS[def.mechanic];
   const mgrSpec = b.manager ? MANAGER_SPECIALTIES[b.manager.specialty] : null;
 
@@ -300,7 +400,10 @@ export function stepBusiness(b: OwnedBusiness, s: GameState): BusinessTickResult
   let mState = b.mState + (target - b.mState) * mech.driftRate * driftMult;
   mState = Math.max(mech.min, Math.min(mech.max, mState));
 
-  // 2. Compute revenue / cost.
+  // 2. Compute revenue / cost. Multi-location scales both with diminishing
+  //    returns (each new outlet adds 95% of the prior). Category synergy
+  //    buffs revenue when the player runs several businesses of the same
+  //    category — diversification penalty is implicit (no synergy).
   const macroMult = 1 + s.economy.gdpGrowth;
   const incomeMult = incomeMultiplier(s.progression);
   const revMechMult = mech.revMult(mState);
@@ -308,10 +411,12 @@ export function stepBusiness(b: OwnedBusiness, s: GameState): BusinessTickResult
   const mktgMult = 1 + b.marketingLevel * 0.12;
   const mgrRevMult = mgrSpec?.revMult ?? 1;
   const mgrCostMult = mgrSpec?.costMult ?? 1;
+  const locFactor = locationsFactor(b.locations);
+  const synergyMult = categorySynergyMult(def.category, s);
 
-  const revenue = def.baseRevenuePerTick * b.level * revMechMult * mktgMult * macroMult * mgrRevMult * incomeMult;
-  let cost = def.baseCostPerTick * b.level * costMechMult * mgrCostMult;
-  if (b.manager) cost += b.manager.salaryPerTick;
+  const revenue = def.baseRevenuePerTick * b.level * locFactor * revMechMult * mktgMult * macroMult * mgrRevMult * incomeMult * synergyMult;
+  let cost = def.baseCostPerTick * b.level * locFactor * costMechMult * mgrCostMult;
+  if (b.manager) cost += b.manager.salaryPerTick * locFactor; // manager scales with locations
 
   let profit = revenue - cost;
   // 3. Bankruptcy gravity: reserve absorbs profit. Cash payout to player is
@@ -374,6 +479,7 @@ export function freshBusiness(businessId: string): OwnedBusiness {
     businessId,
     level: 1,
     marketingLevel: 0,
+    locations: 1,
     reserve: (def?.startupCost ?? 1000) * 0.05, // small buffer to start
     mState: mech.initial(),
     manager: null,
@@ -384,11 +490,11 @@ export function freshBusiness(businessId: string): OwnedBusiness {
 }
 
 // Sale price for selling a business — most of its capital invested back, plus
-// goodwill from accumulated reserve & the upgrade level.
+// goodwill from accumulated reserve, the upgrade level, and any extra outlets.
 export function salePrice(b: OwnedBusiness): number {
   const def = BUSINESS_TYPES.find((x) => x.id === b.businessId);
   if (!def) return 0;
-  const sunkCost = def.startupCost * 0.6 * b.level;
+  const sunkCost = def.startupCost * 0.6 * b.level * locationsFactor(b.locations);
   const reserveValue = Math.max(0, b.reserve);
   return Math.round(sunkCost + reserveValue);
 }
@@ -412,6 +518,8 @@ export function migrateBusiness(raw: unknown): OwnedBusiness {
     businessId,
     level: typeof r.level === "number" ? r.level : 1,
     marketingLevel: typeof r.marketingLevel === "number" ? r.marketingLevel : 0,
+    locations: typeof r.locations === "number" && r.locations >= 1 ? r.locations : 1,
+    isPublic: r.isPublic ?? false,
     reserve: typeof r.reserve === "number" ? r.reserve : fresh.reserve,
     mState: typeof r.mState === "number" ? r.mState : fresh.mState,
     manager: r.manager ?? null,

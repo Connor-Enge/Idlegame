@@ -276,6 +276,12 @@ export interface OwnedBusiness {
   businessId: string;
   level: number; // upgrades scale revenue & cost together
   marketingLevel: number; // pure revenue multiplier
+  // Additional outlets of this business. Revenue & cost scale with locations
+  // but each new one earns a bit less than the last (diminishing returns).
+  locations: number;
+  // Once IPO'd, the business becomes a passive dividend stream — no events,
+  // no mechanic drift, no management needed. One-way conversion.
+  isPublic?: boolean;
   // Cash reserve — accumulates net profit each tick. When it sits at zero
   // (i.e. has gone negative) for long enough, the business bankrupts.
   reserve: number;

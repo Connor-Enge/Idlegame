@@ -1,6 +1,10 @@
 import { BUSINESS_TYPES, PROPERTIES } from "./data";
 import {
+  MAX_LOCATIONS,
+  expansionCost,
   freshBusiness,
+  ipoEligible,
+  ipoValuation,
   makeManager,
   managerSalary,
   mechanicFor,
@@ -508,6 +512,35 @@ export function resolveEvent(state: GameState, index: number, optionIdx: number)
   next.event = null;
   s.businesses[index] = next;
   return { state: s, ok: true, message: `${biz.event.title}: ${opt.label}` };
+}
+
+// Open another outlet of an owned business — chain expansion.
+export function expandBusiness(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  if (biz.isPublic) return fail(state, "Public companies can't add outlets");
+  if (biz.locations >= MAX_LOCATIONS) return fail(state, "Chain at maximum size");
+  const cost = expansionCost(biz);
+  if (cost > state.stats.cash) return fail(state, `Need ${money(cost)} to open another location`);
+  const s = clone(state);
+  s.stats.cash -= cost;
+  s.businesses[index] = { ...biz, locations: biz.locations + 1 };
+  return { state: s, ok: true, message: `Opened location #${biz.locations + 1}` };
+}
+
+// IPO the business: one-time cash payout in exchange for a passive
+// dividend stream and giving up active management.
+export function ipoBusiness(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  const gate = ipoEligible(biz);
+  if (!gate.ok) return fail(state, gate.reason ?? "Not eligible for IPO");
+  const proceeds = ipoValuation(biz);
+  const s = clone(state);
+  s.stats.cash += proceeds;
+  s.businesses[index] = { ...biz, isPublic: true, manager: null, event: null };
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `IPO'd for ${money(proceeds)} — now a passive dividend.` };
 }
 
 export function sellBusiness(state: GameState, index: number): ActionResult {

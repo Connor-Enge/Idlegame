@@ -6,7 +6,14 @@ import { Button, Card, SectionTitle, Pill, LockedScreen, ProgressBar } from "@/c
 import { BUSINESS_TYPES, FEATURE_UNLOCKS } from "@/lib/game/data";
 import {
   BANKRUPT_GRACE_TICKS,
+  IPO_DIVIDEND_RATIO,
   MANAGER_SPECIALTIES,
+  MAX_LOCATIONS,
+  categorySynergyMult,
+  expansionCost,
+  ipoEligible,
+  ipoValuation,
+  locationsFactor,
   managerSalary,
   mechanicFor,
   salePrice,
@@ -73,11 +80,46 @@ function BusinessCard({
   if (!def || !state) return null;
   const mech = mechanicFor(biz);
 
+  // ----- IPO'd: passive dividend card, no management UI -----
+  if (biz.isPublic) {
+    const locFactor = locationsFactor(biz.locations);
+    const dividend = def.baseRevenuePerTick * biz.level * locFactor * IPO_DIVIDEND_RATIO * (1 + state.economy.gdpGrowth) * 0.12; // BIZ_PROFIT_SCALE
+    return (
+      <Card className="border-accent-2/40 bg-accent-2/5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{def.icon}</span>
+            <div>
+              <div className="text-base font-bold leading-tight">{def.name}</div>
+              <div className="text-[11px] text-muted">
+                {def.category} · Lv {biz.level} · {biz.locations} location{biz.locations > 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+          <Pill tone="up">📈 Public</Pill>
+        </div>
+        <div className="mt-3 rounded-xl bg-white/5 p-3 text-center text-xs">
+          <div className="text-muted">Passive dividend</div>
+          <div className="text-lg font-bold text-accent-2">{money(dividend)}/tick</div>
+        </div>
+        <button
+          onClick={() => run(gameActions.sellBusiness(state, index))}
+          className="mt-2 w-full text-center text-[11px] text-muted active:text-white"
+        >
+          Sell shares for {money(salePrice(biz))}
+        </button>
+      </Card>
+    );
+  }
+
+  // ----- Active business -----
   // Estimate per-tick profit so the player can see whether they're bleeding.
   const macroMult = 1 + state.economy.gdpGrowth;
   const mktgMult = 1 + biz.marketingLevel * 0.12;
-  const revenue = def.baseRevenuePerTick * biz.level * mech.revMult(biz.mState) * mktgMult * macroMult * (biz.manager ? MANAGER_SPECIALTIES[biz.manager.specialty].revMult : 1);
-  const cost = def.baseCostPerTick * biz.level * mech.costMult(biz.mState) * (biz.manager ? MANAGER_SPECIALTIES[biz.manager.specialty].costMult : 1) + (biz.manager?.salaryPerTick ?? 0);
+  const locFactor = locationsFactor(biz.locations);
+  const synergy = categorySynergyMult(def.category, state);
+  const revenue = def.baseRevenuePerTick * biz.level * locFactor * mech.revMult(biz.mState) * mktgMult * macroMult * synergy * (biz.manager ? MANAGER_SPECIALTIES[biz.manager.specialty].revMult : 1);
+  const cost = def.baseCostPerTick * biz.level * locFactor * mech.costMult(biz.mState) * (biz.manager ? MANAGER_SPECIALTIES[biz.manager.specialty].costMult : 1) + (biz.manager?.salaryPerTick ?? 0) * locFactor;
   const profit = revenue - cost;
 
   const inRed = biz.reserve < 0;
@@ -85,6 +127,10 @@ function BusinessCard({
   const upgradeCost = def.startupCost * 0.5 * biz.level;
   const marketingCost = 5000 * (biz.marketingLevel + 1);
   const opsCost = Math.round(def.startupCost * 0.06 * biz.level);
+  const expandCost = expansionCost(biz);
+  const canExpand = biz.locations < MAX_LOCATIONS;
+  const ipoGate = ipoEligible(biz);
+  const ipoPrice = ipoValuation(biz);
 
   return (
     <Card className={inRed ? "border-danger/50" : "border-accent/30"}>
@@ -93,7 +139,10 @@ function BusinessCard({
           <span className="text-3xl">{def.icon}</span>
           <div>
             <div className="text-base font-bold leading-tight">{def.name}</div>
-            <div className="text-[11px] text-muted">{def.category} · Lv {biz.level}</div>
+            <div className="text-[11px] text-muted">
+              {def.category} · Lv {biz.level} · {biz.locations}× loc
+              {synergy > 1 && <span className="text-accent-2"> · synergy +{Math.round((synergy - 1) * 100)}%</span>}
+            </div>
           </div>
         </div>
         <Pill tone={profit >= 0 ? "up" : "down"}>{money(profit)}/tick</Pill>
@@ -160,6 +209,25 @@ function BusinessCard({
         <span>{money(upgradeCost)}</span>
         <span>{money(marketingCost)}</span>
         <span>{money(opsCost)}</span>
+      </div>
+
+      {/* Chain expansion + IPO */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button
+          variant="secondary"
+          disabled={!canExpand || expandCost > cash}
+          onClick={() => run(gameActions.expandBusiness(state, index))}
+        >
+          🏬 {canExpand ? `Expand (${money(expandCost)})` : "Max chain"}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!ipoGate.ok}
+          onClick={() => run(gameActions.ipoBusiness(state, index))}
+          title={ipoGate.reason}
+        >
+          📈 {ipoGate.ok ? `IPO (${money(ipoPrice)})` : ipoGate.reason}
+        </Button>
       </div>
 
       <button
