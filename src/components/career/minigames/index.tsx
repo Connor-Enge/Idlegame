@@ -47,6 +47,13 @@ import InsuranceAgent from "./InsuranceAgent";
 import RealEstate from "./RealEstate";
 import Paralegal from "./Paralegal";
 import Accountant from "./Accountant";
+import Bookkeeper from "./Bookkeeper";
+import OfficeManager from "./OfficeManager";
+import HRCoordinator from "./HRCoordinator";
+import Recruiter from "./Recruiter";
+import Marketing from "./Marketing";
+import Copywriter from "./Copywriter";
+import GraphicDesigner from "./GraphicDesigner";
 
 // minigameId -> component. Jobs whose mechanic isn't built yet fall back to the
 // clicker, so the chain is always playable. Adding a new mechanic = a new entry.
@@ -95,6 +102,13 @@ const COMPONENTS: Record<string, ComponentType<MinigameProps>> = {
   realestate: RealEstate,
   paralegal: Paralegal,
   accountant: Accountant,
+  bookkeeper: Bookkeeper,
+  officemgr: OfficeManager,
+  hrcoord: HRCoordinator,
+  recruiter: Recruiter,
+  marketing: Marketing,
+  copywriter: Copywriter,
+  designer: GraphicDesigner,
 };
 
 export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {
