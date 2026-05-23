@@ -42,6 +42,16 @@ async function run(): Promise<void> {
       "created_at" timestamp with time zone DEFAULT now() NOT NULL
     )
   `);
+  // Idempotent add of newer columns / indexes so existing DBs pick them up
+  // without a separate migration step. Safe to re-run on every cold start.
+  await db.execute(sql`
+    ALTER TABLE "players" ADD COLUMN IF NOT EXISTS "peak_net_worth" double precision DEFAULT 0 NOT NULL
+  `);
+  // Backfill the peak from current net worth for rows that pre-date this
+  // column. Only runs the first time it sees a 0 peak — afterwards GREATEST
+  // in savePlayer keeps it monotonic.
+  await db.execute(sql`UPDATE "players" SET "peak_net_worth" = "net_worth" WHERE "peak_net_worth" = 0 AND "net_worth" > 0`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "players_net_worth_idx" ON "players" USING btree ("net_worth")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "players_peak_net_worth_idx" ON "players" USING btree ("peak_net_worth")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "events_player_idx" ON "events" USING btree ("player_id")`);
 }

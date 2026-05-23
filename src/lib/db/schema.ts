@@ -20,12 +20,17 @@ export const players = pgTable(
     displayName: text("display_name"),
     cash: doublePrecision("cash").notNull().default(0),
     netWorth: doublePrecision("net_worth").notNull().default(0),
+    // Lifetime high-water mark for net worth. `net_worth` is overwritten every
+    // save (and resets on death/prestige), so the leaderboard ranks by this
+    // monotonically-increasing column instead.
+    peakNetWorth: doublePrecision("peak_net_worth").notNull().default(0),
     state: jsonb("state").$type<GameState>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     netWorthIdx: index("players_net_worth_idx").on(t.netWorth),
+    peakIdx: index("players_peak_net_worth_idx").on(t.peakNetWorth),
   }),
 );
 
