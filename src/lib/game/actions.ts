@@ -20,6 +20,7 @@ import {
   educationById,
   grantXp,
   hasFeature,
+  incomeMultiplier,
   legacyGain,
 } from "./progression";
 import type {
@@ -268,7 +269,10 @@ export function workJob(state: GameState, points: number, jobIdx?: number): Acti
 
   const s = clone(state);
   const c = s.career;
-  const cash = Math.round(points * job.cashPerPoint);
+  // Career cash benefits from the same legacy / level multiplier as every
+  // other income source. This is what makes retiring actually reward the
+  // next life — without it, prestige is purely cosmetic.
+  const cash = Math.round(points * job.cashPerPoint * incomeMultiplier(s.progression));
   s.stats.cash += cash;
   c.totalEarned += cash;
   c.roundsPlayed += 1;

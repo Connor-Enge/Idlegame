@@ -38,7 +38,7 @@ export default function HomePage() {
         steps={[
           { n: "1", icon: "💼", label: "Earn", body: "Climb the career chain (active) or stack businesses & investments (passive)." },
           { n: "2", icon: "📈", label: "Grow", body: "Cash unlocks investing → real estate → businesses by net-worth gates." },
-          { n: "3", icon: "✨", label: "Retire", body: "Reset for Legacy Points — permanent +2% income each, forever." },
+          { n: "3", icon: "✨", label: "Retire", body: "Reset for Legacy Points — permanent +2.5% income each, forever." },
         ]}
         rules={[
           "Lives are short (~37 min) — death is automatic. Net worth converts to Legacy Points and a new life starts.",
@@ -91,7 +91,7 @@ export default function HomePage() {
               <div className="font-semibold">Retire &amp; Reinvest</div>
               <div className="text-[11px] text-muted">
                 {progression.retirements > 0 && `Retired ${progression.retirements}× · `}
-                Each Legacy Point = +2% income, forever.
+                Each Legacy Point = +2.5% income, forever.
               </div>
             </div>
             <span className="text-2xl">✨</span>

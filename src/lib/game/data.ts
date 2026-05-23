@@ -37,8 +37,11 @@ export const FEATURE_UNLOCKS: { flag: FeatureFlag; netWorth: number; label: stri
 ];
 
 // Prestige: retire to convert net worth into permanent Legacy Points.
-export const RETIRE_THRESHOLD = 5_000_000;
-export const LEGACY_INCOME_BONUS = 0.02; // +2% global income per legacy point
+// Voluntary retirement bar. Set low enough that a successful first life can
+// hit it — without that the player only ever sees involuntary deaths with
+// tiny credit yields and the prestige loop never feels rewarding.
+export const RETIRE_THRESHOLD = 1_000_000;
+export const LEGACY_INCOME_BONUS = 0.025; // +2.5% global income per legacy point
 
 // ---------------------------------------------------------------------------
 // Brokerage tuning (the Robinhood layer)

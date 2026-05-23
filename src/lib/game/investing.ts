@@ -7,7 +7,7 @@ import {
   MARGIN_RATE_PER_TICK,
   PORTFOLIO_HISTORY_MAX,
 } from "./data";
-import { grantXp } from "./progression";
+import { grantXp, incomeMultiplier } from "./progression";
 import type { GameState, InvestingState, MarketAsset } from "./types";
 
 export function defaultInvesting(): InvestingState {
@@ -123,10 +123,13 @@ export function processInvestingTick(s: GameState): void {
   // to maintain it.
 
   // 2. Dividends — a small trickle into cash for yield-paying holdings.
+  // Scales with the global income multiplier so legacy points actually
+  // amplify passive income across prestige loops.
+  const mult = incomeMultiplier(s.progression);
   for (const h of s.holdings) {
     const a = s.assets.find((x) => x.id === h.assetId);
     if (!a?.dividendYield) continue;
-    const div = a.price * h.quantity * (a.dividendYield / 100) * DIVIDEND_PER_TICK_FACTOR;
+    const div = a.price * h.quantity * (a.dividendYield / 100) * DIVIDEND_PER_TICK_FACTOR * mult;
     s.stats.cash += div;
     inv.dividendsEarned += div;
   }

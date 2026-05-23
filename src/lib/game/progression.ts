@@ -102,9 +102,12 @@ export function canRetire(state: GameState): boolean {
   return state.stats.netWorth >= RETIRE_THRESHOLD;
 }
 
+// Credit yield from prestige. Tuned so an early-life $30k death yields ~7
+// credits (+~18% income boost), and a $1M voluntary retire yields ~38
+// (+~95%), so the loop actually snowballs life-over-life.
 export function legacyGain(netWorth: number): number {
   if (netWorth < RETIRE_THRESHOLD) return 0;
-  return Math.floor(10 * Math.sqrt(netWorth / 1_000_000));
+  return Math.floor(12 * Math.sqrt(netWorth / 100_000));
 }
 
 // ---------------------------------------------------------------------------
@@ -148,8 +151,8 @@ export function lifeProgress(life: LifeState): number {
   return span > 0 ? Math.min(1, life.ageTicks / span) : 0;
 }
 
-// Legacy (retirement) credits awarded when a life ends — unlike voluntary
-// retirement there's no threshold, and every life grants at least 1.
+// Legacy credits awarded when a life ends — same curve as voluntary retire,
+// but no threshold and a floor of 1 so every death rewards something.
 export function lifeCredits(netWorth: number): number {
-  return Math.max(1, Math.floor(10 * Math.sqrt(Math.max(0, netWorth) / 1_000_000)));
+  return Math.max(1, Math.floor(12 * Math.sqrt(Math.max(0, netWorth) / 100_000)));
 }
