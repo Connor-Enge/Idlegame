@@ -9,6 +9,7 @@ import type { Achievement, GameState, OfflineReport } from "@/lib/game/types";
 const LS_KEY = "gp:save";
 const LS_PLAYER = "gp:playerId";
 const TICK_INTERVAL_MS = 1000;
+const MARKET_SYNC_MS = 1000; // pull the shared market every tick
 const SAVE_INTERVAL_MS = 15000;
 const MAX_OFFLINE_TICKS = 8 * 60 * 60; // cap offline progress at 8h
 const OFFLINE_MIN_TICKS = 60; // only show a report after ~1 min away
@@ -92,6 +93,28 @@ interface GameStore {
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let saveTimer: ReturnType<typeof setInterval> | null = null;
+let marketTimer: ReturnType<typeof setInterval> | null = null;
+
+// Pull the shared market (prices + economy + history) from the server. Every
+// connected client polls the same endpoint, so everyone sees identical prices.
+// If holdings reference an asset that's been replaced (bankruptcy → new IPO),
+// the stale holding is dropped so the portfolio doesn't carry zombie shares.
+async function syncMarket(): Promise<void> {
+  try {
+    const res = await fetch("/api/market", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const cur = useGame.getState().state;
+    if (!cur) return;
+    const ids = new Set<string>(data.assets.map((a: { id: string }) => a.id));
+    const holdings = cur.holdings.filter((h) => ids.has(h.assetId));
+    useGame.setState({
+      state: { ...cur, assets: data.assets, economy: data.economy, holdings },
+    });
+  } catch {
+    // network blip — try again next interval
+  }
+}
 
 export const useGame = create<GameStore>((set, get) => ({
   state: null,
@@ -132,6 +155,10 @@ export const useGame = create<GameStore>((set, get) => ({
       })
       .catch(() => {});
 
+    // Pull the market once immediately so the first frame shows live prices,
+    // then keep polling on the tick interval.
+    syncMarket();
+    if (!marketTimer) marketTimer = setInterval(syncMarket, MARKET_SYNC_MS);
     if (!tickTimer) tickTimer = setInterval(() => get().tick(), TICK_INTERVAL_MS);
     if (!saveTimer) saveTimer = setInterval(() => get().save(), SAVE_INTERVAL_MS);
     set({ ticking: true });

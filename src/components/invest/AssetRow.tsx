@@ -18,23 +18,28 @@ export default function AssetRow({
   asset,
   onClick,
   shares,
+  locked,
 }: {
   asset: MarketAsset;
   onClick: () => void;
   shares?: number;
+  locked?: boolean;
 }) {
   const change = windowChange(asset);
   const color = trendColor(change >= 0);
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 py-2.5 text-left active:opacity-70"
+      className={`flex w-full items-center gap-3 py-2.5 text-left active:opacity-70 ${locked ? "opacity-60" : ""}`}
     >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
         {asset.logo ?? asset.symbol.slice(0, 1)}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold">{asset.symbol}</div>
+        <div className="flex items-center gap-1.5 truncate text-sm font-bold">
+          {asset.symbol}
+          {locked && <span className="text-[10px] font-semibold text-amber-300">🔒</span>}
+        </div>
         <div className="truncate text-[11px] text-muted">
           {shares != null ? `${trimShares(shares)} shares` : asset.name}
         </div>

@@ -1,4 +1,3 @@
-import { BASE_ASSETS } from "./data";
 import type {
   EconomyEvent,
   EconomyPhase,
@@ -6,18 +5,22 @@ import type {
   MarketAsset,
 } from "./types";
 
-// Reference (anchor) price per asset for mean reversion — keeps prices in a
-// tradeable band instead of compounding to infinity over long sessions.
-const REF_PRICE = new Map(BASE_ASSETS.map((a) => [a.id, a.price]));
-const REVERSION = 0.08; // pull strength back toward the anchor (log space)
-// Hard band caps how far a price can drift from its anchor before it's clamped.
-// Crypto / leveraged products get a wider band; everything else stays tight so
-// a buy-low / sell-high flip can't print a 100x return in a few hundred ticks.
-const BAND_DEFAULT = 3;
-const BAND_VOLATILE = 5; // crypto + leveraged
-function bandFor(asset: MarketAsset): number {
-  return asset.class === "crypto" || asset.id === "lev3x" ? BAND_VOLATILE : BAND_DEFAULT;
-}
+// Mean reversion (log space) pulls the live price back toward the asset's
+// anchor — a fixed reference (its IPO / listing price). There's no hard
+// upper or lower band, so a stock that's hammered by sentiment events can
+// crash all the way to bankruptcy; a stock that's pumping can keep climbing
+// for as long as the wind blows. Bankruptcy triggers below BANKRUPT_RATIO of
+// anchor; the market layer replaces dead listings with fresh procedural IPOs.
+//
+// Tuning intent:
+//   - per-tick shocks dominate the action (1-5% wobble),
+//   - reversion firmly snaps quick spikes back so quick-flip exploits cap out,
+//   - sustained sector / sentiment crashes can still take a name to zero.
+const REVERSION = 0.12;
+const DRIFT_SCALE = 0.25; // damp per-asset constant drift — it compounds hard
+const MOMENTUM_NOISE = 0.2; // per-tick random kick fed into asset's own trend
+export const BANKRUPT_RATIO = 0.08; // price ≤ 8% of anchor → bankrupt
+export const BANKRUPT_FLOOR = 0.01; // absolute price floor before delist
 
 // A lightweight simulated macro economy. Each tick the economy can transition
 // between business-cycle phases, drift its macro indicators, spawn/expire
@@ -167,6 +170,9 @@ function sentimentBeta(asset: MarketAsset): number {
 // Re-price a single asset for the current economy tick. The move combines a
 // SHARED market factor (sentiment × the asset's beta) with the asset's OWN
 // idiosyncratic momentum + random shock, so names don't all move in lockstep.
+// The anchor drifts toward the live price slowly, so trends compound; mean
+// reversion still pulls hard on short-term shocks. No hard band — a stock can
+// triple, or grind to zero. Bankruptcy is flagged here for the market layer.
 export function stepAsset(asset: MarketAsset, economy: EconomyState): MarketAsset {
   const sentimentBias = economy.marketSentiment * asset.volatility * 0.5 * sentimentBeta(asset);
   let sectorMult = 1;
@@ -180,22 +186,37 @@ export function stepAsset(asset: MarketAsset, economy: EconomyState): MarketAsse
 
   // Idiosyncratic momentum: a per-asset trend that random-walks and decays,
   // giving each name its own multi-tick direction (the main de-correlator).
-  const momentum = (asset.momentum ?? 0) * 0.96 + (rng() * 2 - 1) * asset.volatility * 0.35;
+  const momentum = (asset.momentum ?? 0) * 0.96 + (rng() * 2 - 1) * asset.volatility * MOMENTUM_NOISE;
 
-  const shock = (rng() * 2 - 1) * asset.volatility;
-  // Mean reversion: the further price has drifted from its anchor, the harder
-  // it's pulled back — so drift + sentiment cause a bounded premium, not a
-  // runaway exponential. (Without this, long idle sessions print money.)
-  const ref = REF_PRICE.get(asset.id) ?? asset.price;
-  const reversion = -REVERSION * Math.log(asset.price / ref);
-  const change = asset.drift + momentum + sentimentBias + shock + rateDrag + reversion;
-  const raw = asset.price * (1 + change) * sectorMult;
-  // Hard band: stocks/bonds/commodities ±3x, crypto/leveraged ±5x. Keeps the
-  // peak buy-low / sell-high swing realistic so trading is a steady compounder,
-  // not a one-flip jackpot.
-  const b = bandFor(asset);
-  const price = Math.max(ref / b, Math.min(ref * b, Math.max(0.01, round2(raw))));
-  return { ...asset, price, momentum };
+  let shock = (rng() * 2 - 1) * asset.volatility;
+  // Rare tail risk: every now and then a stock takes a catastrophic one-tick
+  // hit. Most names absorb it and recover; an unlucky few crater straight to
+  // bankruptcy and get replaced by a fresh IPO. Bonds + gold are safe-haven
+  // and skip this (real-world equivalent: rates can spike, but treasuries
+  // don't fail-to-zero overnight in the same way).
+  const exposedToTail = asset.class !== "bond" && asset.sector !== "metals";
+  // ~1 catastrophic event per 8000 ticks per exposed asset (every couple of
+  // hours of continuous play across the whole market) — rare enough that any
+  // given stock can run for a long time, frequent enough that the chain of
+  // bankruptcy → IPO actually matters.
+  if (exposedToTail && rng() < 0.00012) shock -= 0.75 + rng() * 0.2; // −75% to −95%
+  // Mean reversion toward the *moving* anchor — stronger the further off it
+  // is, but the anchor itself drifts toward the live price each tick (below)
+  // so genuine trends are allowed to compound.
+  const anchor = asset.anchor ?? asset.price;
+  const reversion = -REVERSION * Math.log(asset.price / Math.max(0.01, anchor));
+  // Damp constant drift — a tiny per-tick drift compounds wildly (e.g. 0.0005
+  // becomes 5x over 3000 ticks); DRIFT_SCALE pulls that back into a sane band.
+  const change = asset.drift * DRIFT_SCALE + momentum + sentimentBias + shock + rateDrag + reversion;
+  const rawPrice = Math.max(0, asset.price * (1 + change) * sectorMult);
+  const price = Math.max(BANKRUPT_FLOOR / 2, round2(rawPrice));
+
+  // Anchor is fixed at the listing / IPO price — it does NOT track the live
+  // price. That keeps the random walk bounded around a stable reference.
+  // Bankruptcy: price collapses far below anchor or hits the absolute floor.
+  const bankrupt = price < Math.max(BANKRUPT_FLOOR, anchor * BANKRUPT_RATIO);
+
+  return { ...asset, price, momentum, anchor, bankrupt };
 }
 
 export function macroSummary(e: EconomyState): string {

@@ -133,6 +133,15 @@ export interface MarketAsset {
   // Idiosyncratic trend that random-walks per asset, so names don't all move
   // together — market sentiment is shared, this is each stock's own story.
   momentum?: number;
+  // Moving "anchor" price that mean reversion pulls toward. It drifts slowly
+  // toward the live price each tick, so a stock that genuinely trends keeps
+  // running while a brief shock still gets pulled back. No hard band.
+  anchor?: number;
+  // Server-set when the price collapses far enough — UI shows "Bankrupt" and
+  // the asset is delisted next market tick, replaced by a fresh procedural IPO.
+  bankrupt?: boolean;
+  // Day the asset listed (server tick), shown as the IPO date on the detail.
+  listedAt?: number;
 }
 
 export interface Holding {

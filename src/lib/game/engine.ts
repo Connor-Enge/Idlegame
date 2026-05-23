@@ -6,7 +6,7 @@ import {
   RENT_SCALE,
 } from "./data";
 import { freshCareer, normalizeCareer } from "./career";
-import { initialEconomy, stepAsset, stepEconomy } from "./economy";
+import { initialEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
 import {
   currentAge,
@@ -157,10 +157,10 @@ function stepOnce(s: GameState): GameState {
     }
   }
 
-  // 1. Economy first — it prices everything downstream.
-  s.economy = stepEconomy(s.economy);
-  s.assets = s.assets.map((a) => stepAsset(a, s.economy));
-
+  // 1. Economy + asset prices are now owned by the shared server market
+  //    (see src/lib/market/server.ts) — the client polls /api/market and
+  //    overwrites s.economy + s.assets in the store. The engine just reads
+  //    whatever's currently in state for income / portfolio calcs.
   const mult = incomeMultiplier(s.progression);
   let income = 0;
 

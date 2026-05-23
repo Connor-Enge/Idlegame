@@ -118,14 +118,9 @@ export function settleSell(s: GameState, assetId: string, shares: number): numbe
 export function processInvestingTick(s: GameState): void {
   const inv = s.investing;
 
-  // 1. Append the new price to each asset's rolling history.
-  for (const a of s.assets) {
-    if (!a.history) a.history = [];
-    a.history.push(a.price);
-    if (a.history.length > ASSET_HISTORY_MAX) {
-      a.history = a.history.slice(a.history.length - ASSET_HISTORY_MAX);
-    }
-  }
+  // Asset price history is now appended on the shared server market — it's
+  // delivered intact via /api/market, so the per-player engine doesn't need
+  // to maintain it.
 
   // 2. Dividends — a small trickle into cash for yield-paying holdings.
   for (const h of s.holdings) {

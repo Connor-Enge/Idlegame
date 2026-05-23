@@ -42,9 +42,14 @@ export default function InvestPage() {
 
   const open = (id: string) => setView({ type: "detail", id });
 
-  // Only assets the player has unlocked are tradable / shown.
-  const visible = assets.filter((a) => !a.unlockLevel || progression.level >= a.unlockLevel);
+  // Every player sees every listed instrument — locked ones just refuse the
+  // buy when tapped (the action does the level / credential gating). This
+  // makes exploration actually useful instead of hiding most of the market.
+  const visible = assets;
   const byId = (id: string) => assets.find((a) => a.id === id);
+  const isLocked = (a: MarketAsset) =>
+    (a.unlockLevel != null && progression.level < a.unlockLevel) ||
+    (a.requiresCredential != null && !progression.credentials.includes(a.requiresCredential));
 
   const holdingsValue = holdings.reduce((sum, h) => sum + (byId(h.assetId)?.price ?? 0) * h.quantity, 0);
   const portfolioOpen = investing.portfolioHistory[0] ?? holdingsValue;
@@ -67,7 +72,7 @@ export default function InvestPage() {
         <SearchBar query={query} setQuery={setQuery} />
         <div className="divide-y divide-white/5">
           {results.length ? (
-            results.map((a) => <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />)
+            results.map((a) => <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />)
           ) : (
             <div className="py-10 text-center text-sm text-muted">No matches for “{query}”.</div>
           )}
@@ -83,7 +88,7 @@ export default function InvestPage() {
   const crypto = visible.filter((a) => a.class === "crypto");
   const funds = visible.filter((a) => a.class === "index" || a.class === "bond");
   const movers = [...visible].sort((a, b) => Math.abs(windowChange(b)) - Math.abs(windowChange(a))).slice(0, 5);
-  const lockedCount = assets.length - visible.length;
+  const lockedCount = assets.filter(isLocked).length;
 
   return (
     <div className="space-y-4">
@@ -138,7 +143,7 @@ export default function InvestPage() {
       {watched.length > 0 && (
         <List title={watchlist?.name ?? "Watchlist"}>
           {watched.map((a) => (
-            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+            <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />
           ))}
         </List>
       )}
@@ -146,21 +151,21 @@ export default function InvestPage() {
       {popular.length > 0 && (
         <List title="Popular">
           {popular.map((a) => (
-            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+            <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />
           ))}
         </List>
       )}
 
       <List title="Daily movers">
         {movers.map((a) => (
-          <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+          <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />
         ))}
       </List>
 
       {crypto.length > 0 && (
         <List title="Crypto · 24 Hour Market">
           {crypto.map((a) => (
-            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+            <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />
           ))}
         </List>
       )}
@@ -168,7 +173,7 @@ export default function InvestPage() {
       {funds.length > 0 && (
         <List title="ETFs & bonds">
           {funds.map((a) => (
-            <AssetRow key={a.id} asset={a} onClick={() => open(a.id)} />
+            <AssetRow key={a.id} asset={a} locked={isLocked(a)} onClick={() => open(a.id)} />
           ))}
         </List>
       )}
