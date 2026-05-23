@@ -222,6 +222,12 @@ export interface OwnedProperty {
 // Business ownership
 // ---------------------------------------------------------------------------
 
+// Each business is themed around one of these mechanic archetypes. The
+// universal income formula is the same; the mechanic supplies an extra knob
+// (menu pricing, customer churn, quality drift, hype waves, occupancy) that
+// the player tunes. Defined in src/lib/game/business.ts.
+export type BusinessMechanic = "menu" | "churn" | "quality" | "hype" | "capacity";
+
 export interface BusinessType {
   id: string;
   name: string;
@@ -230,14 +236,61 @@ export interface BusinessType {
   baseRevenuePerTick: number;
   baseCostPerTick: number;
   description: string;
+  icon: string;
+  mechanic: BusinessMechanic;
   unlockLevel?: number; // hidden until the player reaches this level
+}
+
+// Managers hired into a specific role. A business may have at most one
+// manager at a time; each specialty buffs a different lever.
+export type ManagerSpecialty = "ops" | "marketing" | "finance";
+
+export interface Manager {
+  name: string;
+  specialty: ManagerSpecialty;
+  level: number; // 1..5
+  salaryPerTick: number;
+}
+
+// A pending choice surfaced on a business — the player picks an option, the
+// effect applies, the event clears. Ignoring it costs reserve until it expires.
+export interface BizEvent {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  options: Array<{ label: string; effect: BizEventEffect; cost?: number }>;
+  ticksRemaining: number;
+  // Per-tick drain on reserve while the event is unresolved.
+  reserveDrainPerTick?: number;
+}
+
+export interface BizEventEffect {
+  reserveDelta?: number;
+  mStateDelta?: number;
+  cashDelta?: number;
+  bankrupt?: boolean;
 }
 
 export interface OwnedBusiness {
   businessId: string;
-  level: number; // upgrades scale revenue
-  employees: number;
-  marketingLevel: number;
+  level: number; // upgrades scale revenue & cost together
+  marketingLevel: number; // pure revenue multiplier
+  // Cash reserve — accumulates net profit each tick. When it sits at zero
+  // (i.e. has gone negative) for long enough, the business bankrupts.
+  reserve: number;
+  // Single state number whose meaning depends on the mechanic:
+  //   menu     → markup multiplier (0.5..2.0; 1.0 = baseline)
+  //   churn    → active customer count (drains, refills via marketing)
+  //   quality  → 0..100; drifts down, player invests to restore
+  //   hype     → 0..100; spikes from marketing, decays naturally
+  //   capacity → 0..100; occupancy %, climbs with marketing, decays without
+  mState: number;
+  manager: Manager | null;
+  event: BizEvent | null;
+  // Consecutive ticks the business has been in the red. Bankruptcy fires
+  // once this exceeds BANKRUPT_GRACE_TICKS (set in business.ts).
+  redTicks: number;
   foundedAt: number;
 }
 

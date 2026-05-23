@@ -1,10 +1,10 @@
 import {
   BASE_ASSETS,
-  BIZ_PROFIT_SCALE,
   BUSINESS_TYPES,
   PROPERTIES,
   RENT_SCALE,
 } from "./data";
+import { migrateBusiness, stepBusiness } from "./business";
 import { freshCareer, normalizeCareer } from "./career";
 import { initialEconomy } from "./economy";
 import { defaultInvesting, ensureHistory, processInvestingTick } from "./investing";
@@ -19,7 +19,7 @@ import {
 } from "./progression";
 import type { GameState, MarketAsset } from "./types";
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 export function createInitialState(playerId: string): GameState {
   const now = Date.now();
@@ -82,6 +82,14 @@ export function normalizeState(s: GameState): GameState {
 
   // Career sub-state migration (v4 replaced the whole career model).
   s.career = normalizeCareer(s.career);
+
+  // v5: business records grew (reserve, mState, manager, event, redTicks).
+  // Run every owned business through the migrator so old saves keep them.
+  if (Array.isArray(s.businesses)) {
+    s.businesses = s.businesses.map(migrateBusiness);
+  } else {
+    s.businesses = [];
+  }
 
   // Life/mortality migration for saves created before it existed.
   if (!s.life) {
@@ -188,15 +196,16 @@ function stepOnce(s: GameState): GameState {
     }
   }
 
-  // 4. Business net profit (scales with level/employees/marketing).
+  // 4. Businesses — each runs its own mechanic, accumulates a cash reserve,
+  //    pays profits out above a buffer threshold, can spawn events, and
+  //    bankrupts after sustained losses. See src/lib/game/business.ts.
+  const survivors: typeof s.businesses = [];
   for (const biz of s.businesses) {
-    const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId);
-    if (!def) continue;
-    const revMult = biz.level * (1 + biz.marketingLevel * 0.15) * (1 + s.economy.gdpGrowth);
-    const revenue = def.baseRevenuePerTick * revMult * mult;
-    const cost = def.baseCostPerTick * biz.level + biz.employees * 5;
-    income += (revenue - cost) * BIZ_PROFIT_SCALE;
+    const { next, cashDelta, bankrupt } = stepBusiness(biz, s);
+    income += cashDelta;
+    if (!bankrupt) survivors.push(next);
   }
+  s.businesses = survivors;
 
   s.stats.cash = Math.max(0, s.stats.cash + income);
 

@@ -182,12 +182,50 @@ export const PROPERTIES: Property[] = [
 // Businesses — ownable income engines, revealed by level.
 // ---------------------------------------------------------------------------
 
+// 25 businesses across 8 categories. Each is tagged with one of five
+// "mechanic" archetypes that supplies a unique per-business decision lever
+// (see src/lib/game/business.ts). They scale loosely with unlockLevel; the
+// catalog deliberately overlaps levels so the player always has 2-3 options
+// at any unlock point instead of one.
 export const BUSINESS_TYPES: BusinessType[] = [
-  { id: "food-truck", name: "Food Truck", category: "Food", startupCost: 25_000, baseRevenuePerTick: 60, baseCostPerTick: 35, description: "Low barrier, thin margins, long hours.", unlockLevel: 1 },
-  { id: "laundromat", name: "Laundromat", category: "Services", startupCost: 90_000, baseRevenuePerTick: 110, baseCostPerTick: 45, description: "Quarters add up. Mostly passive.", unlockLevel: 4 },
-  { id: "cafe", name: "Coffee Shop", category: "Food", startupCost: 150_000, baseRevenuePerTick: 180, baseCostPerTick: 90, description: "Caffeine is a reliable vice.", unlockLevel: 6 },
-  { id: "gym", name: "Fitness Gym", category: "Services", startupCost: 400_000, baseRevenuePerTick: 420, baseCostPerTick: 210, description: "Sells memberships nobody uses.", unlockLevel: 9 },
-  { id: "saas", name: "SaaS Startup", category: "Tech", startupCost: 750_000, baseRevenuePerTick: 900, baseCostPerTick: 500, description: "High burn, high ceiling.", unlockLevel: 12 },
-  { id: "casino", name: "Casino", category: "Gaming", startupCost: 5_000_000, baseRevenuePerTick: 6_000, baseCostPerTick: 2_800, description: "The house always wins. Now you're the house.", unlockLevel: 16 },
-  { id: "conglomerate", name: "Conglomerate", category: "Holding", startupCost: 50_000_000, baseRevenuePerTick: 55_000, baseCostPerTick: 24_000, description: "Own a little of everything.", unlockLevel: 22 },
+  // ---- Food (menu pricing) ----
+  { id: "food-truck", name: "Food Truck", category: "Food", icon: "🚚", mechanic: "menu", startupCost: 25_000, baseRevenuePerTick: 60, baseCostPerTick: 35, description: "Low barrier, thin margins, long hours.", unlockLevel: 1 },
+  { id: "diner", name: "Roadside Diner", category: "Food", icon: "🍳", mechanic: "menu", startupCost: 80_000, baseRevenuePerTick: 130, baseCostPerTick: 70, description: "Classic Americana — bottomless coffee.", unlockLevel: 3 },
+  { id: "cafe", name: "Coffee Shop", category: "Food", icon: "☕", mechanic: "quality", startupCost: 150_000, baseRevenuePerTick: 200, baseCostPerTick: 95, description: "Caffeine is a reliable vice.", unlockLevel: 5 },
+  { id: "bakery", name: "Artisan Bakery", category: "Food", icon: "🥐", mechanic: "quality", startupCost: 220_000, baseRevenuePerTick: 280, baseCostPerTick: 140, description: "Sourdough cult following.", unlockLevel: 6 },
+  { id: "restaurant", name: "Fine Dining", category: "Food", icon: "🍽️", mechanic: "menu", startupCost: 600_000, baseRevenuePerTick: 700, baseCostPerTick: 360, description: "White tablecloth, deep wine list.", unlockLevel: 10 },
+
+  // ---- Services (quality / capacity) ----
+  { id: "laundromat", name: "Laundromat", category: "Services", icon: "🧺", mechanic: "capacity", startupCost: 90_000, baseRevenuePerTick: 130, baseCostPerTick: 50, description: "Quarters add up. Mostly passive.", unlockLevel: 3 },
+  { id: "salon", name: "Hair Salon", category: "Services", icon: "💇", mechanic: "quality", startupCost: 200_000, baseRevenuePerTick: 260, baseCostPerTick: 130, description: "Loyal regulars; tip economy.", unlockLevel: 5 },
+  { id: "carwash", name: "Car Wash", category: "Services", icon: "🚿", mechanic: "capacity", startupCost: 350_000, baseRevenuePerTick: 400, baseCostPerTick: 180, description: "Automated, weather-dependent.", unlockLevel: 7 },
+  { id: "drycleaner", name: "Dry Cleaner", category: "Services", icon: "👔", mechanic: "capacity", startupCost: 450_000, baseRevenuePerTick: 480, baseCostPerTick: 220, description: "Forgotten shirts subsidize the business.", unlockLevel: 8 },
+
+  // ---- Retail (menu / capacity) ----
+  { id: "boutique", name: "Boutique", category: "Retail", icon: "👗", mechanic: "menu", startupCost: 300_000, baseRevenuePerTick: 380, baseCostPerTick: 200, description: "Curated, marked-up, very pinterest.", unlockLevel: 6 },
+  { id: "bookstore", name: "Bookstore", category: "Retail", icon: "📚", mechanic: "capacity", startupCost: 380_000, baseRevenuePerTick: 410, baseCostPerTick: 200, description: "Cozy. Loss-leading cafe.", unlockLevel: 7 },
+  { id: "convenience", name: "Convenience Store", category: "Retail", icon: "🏪", mechanic: "capacity", startupCost: 550_000, baseRevenuePerTick: 620, baseCostPerTick: 320, description: "Open 24/7. Sells everything overpriced.", unlockLevel: 9 },
+
+  // ---- Health & Fitness (churn) ----
+  { id: "yogastudio", name: "Yoga Studio", category: "Health", icon: "🧘", mechanic: "churn", startupCost: 200_000, baseRevenuePerTick: 260, baseCostPerTick: 110, description: "Memberships nobody cancels.", unlockLevel: 6 },
+  { id: "gym", name: "Fitness Gym", category: "Health", icon: "🏋️", mechanic: "churn", startupCost: 450_000, baseRevenuePerTick: 500, baseCostPerTick: 230, description: "Sells memberships nobody uses.", unlockLevel: 9 },
+  { id: "clinic", name: "Urgent Care Clinic", category: "Health", icon: "🏥", mechanic: "capacity", startupCost: 1_200_000, baseRevenuePerTick: 1_350, baseCostPerTick: 700, description: "Flu season is a goldmine.", unlockLevel: 12 },
+
+  // ---- Tech (churn / hype) ----
+  { id: "saas", name: "SaaS Startup", category: "Tech", icon: "💻", mechanic: "churn", startupCost: 750_000, baseRevenuePerTick: 950, baseCostPerTick: 500, description: "High burn, high ceiling.", unlockLevel: 11 },
+  { id: "app", name: "Social App", category: "Tech", icon: "📱", mechanic: "hype", startupCost: 1_500_000, baseRevenuePerTick: 1_900, baseCostPerTick: 1_000, description: "Viral spike, then back to grind.", unlockLevel: 13 },
+  { id: "datacenter", name: "Data Center", category: "Tech", icon: "🗄️", mechanic: "capacity", startupCost: 4_000_000, baseRevenuePerTick: 4_800, baseCostPerTick: 2_300, description: "Sell racks to the cloud giants.", unlockLevel: 17 },
+
+  // ---- Entertainment (hype) ----
+  { id: "cinema", name: "Movie Theater", category: "Entertainment", icon: "🎬", mechanic: "hype", startupCost: 1_800_000, baseRevenuePerTick: 2_100, baseCostPerTick: 1_100, description: "Lives and dies by the release slate.", unlockLevel: 12 },
+  { id: "arcade", name: "Arcade", category: "Entertainment", icon: "🕹️", mechanic: "hype", startupCost: 900_000, baseRevenuePerTick: 1_100, baseCostPerTick: 520, description: "Token economics, retro vibes.", unlockLevel: 10 },
+  { id: "nightclub", name: "Nightclub", category: "Entertainment", icon: "🪩", mechanic: "hype", startupCost: 2_500_000, baseRevenuePerTick: 3_000, baseCostPerTick: 1_500, description: "VIP tables print money for 18 months.", unlockLevel: 14 },
+
+  // ---- Gaming (menu / hype) ----
+  { id: "esports", name: "Esports Org", category: "Gaming", icon: "🎮", mechanic: "hype", startupCost: 3_500_000, baseRevenuePerTick: 4_200, baseCostPerTick: 2_100, description: "Win the major or starve.", unlockLevel: 15 },
+  { id: "casino", name: "Casino", category: "Gaming", icon: "🎰", mechanic: "menu", startupCost: 5_000_000, baseRevenuePerTick: 6_000, baseCostPerTick: 2_800, description: "The house edge is a slider. Be greedy at your peril.", unlockLevel: 16 },
+
+  // ---- Holding (mixed) ----
+  { id: "vcfund", name: "Venture Fund", category: "Holding", icon: "💸", mechanic: "hype", startupCost: 10_000_000, baseRevenuePerTick: 12_000, baseCostPerTick: 5_500, description: "Pick the next unicorn or eat fees.", unlockLevel: 19 },
+  { id: "conglomerate", name: "Conglomerate", category: "Holding", icon: "🏛️", mechanic: "quality", startupCost: 50_000_000, baseRevenuePerTick: 55_000, baseCostPerTick: 24_000, description: "Own a little of everything.", unlockLevel: 22 },
 ];

@@ -1,4 +1,11 @@
 import { BUSINESS_TYPES, PROPERTIES } from "./data";
+import {
+  freshBusiness,
+  makeManager,
+  managerSalary,
+  mechanicFor,
+  salePrice,
+} from "./business";
 import { JOB_COUNT, careerRoundXp, jobByIndex, minigameById } from "./careerJobs";
 import { computeNetWorth, createInitialState } from "./engine";
 import { playGamble } from "./gambling";
@@ -11,7 +18,12 @@ import {
   hasFeature,
   legacyGain,
 } from "./progression";
-import type { GambleGame, GambleResult, GameState } from "./types";
+import type {
+  GambleGame,
+  GambleResult,
+  GameState,
+  ManagerSpecialty,
+} from "./types";
 
 export type ActionResult = {
   state: GameState;
@@ -370,13 +382,7 @@ export function startBusiness(state: GameState, businessId: string): ActionResul
   const s = clone(state);
   s.stats.cash -= def.startupCost;
   grantXp(s.progression, 20);
-  s.businesses.push({
-    businessId,
-    level: 1,
-    employees: 0,
-    marketingLevel: 0,
-    foundedAt: Date.now(),
-  });
+  s.businesses.push(freshBusiness(businessId));
   s.stats.netWorth = computeNetWorth(s);
   return { state: s, ok: true, message: `Founded ${def.name}` };
 }
@@ -395,17 +401,6 @@ export function upgradeBusiness(state: GameState, index: number): ActionResult {
   return { state: s, ok: true, message: `Upgraded to level ${s.businesses[index].level}` };
 }
 
-export function hireEmployee(state: GameState, index: number): ActionResult {
-  const biz = state.businesses[index];
-  if (!biz) return fail(state, "You don't own that");
-  const cost = 2000 * (biz.employees + 1);
-  if (cost > state.stats.cash) return fail(state, "Can't afford to hire");
-  const s = clone(state);
-  s.stats.cash -= cost;
-  s.businesses[index].employees += 1;
-  return { state: s, ok: true, message: "Hired an employee" };
-}
-
 export function investMarketing(state: GameState, index: number): ActionResult {
   const biz = state.businesses[index];
   if (!biz) return fail(state, "You don't own that");
@@ -414,7 +409,123 @@ export function investMarketing(state: GameState, index: number): ActionResult {
   const s = clone(state);
   s.stats.cash -= cost;
   s.businesses[index].marketingLevel += 1;
+  // Marketing also gives the mechanic-state a small boost (puts the
+  // business on the front foot — extra members, occupancy, hype, etc.).
+  const mech = mechanicFor(biz);
+  const delta = (mech.max - mech.min) * 0.18;
+  s.businesses[index].mState = Math.min(mech.max, biz.mState + delta);
   return { state: s, ok: true, message: "Marketing boosted" };
+}
+
+// Adjust the mechanic state directly (menu markup slider, hype campaign etc.)
+export function setBusinessMState(state: GameState, index: number, mState: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  const mech = mechanicFor(biz);
+  const clamped = Math.max(mech.min, Math.min(mech.max, mState));
+  const s = clone(state);
+  s.businesses[index] = { ...biz, mState: clamped };
+  return { state: s, ok: true, message: `${mech.label} → ${clamped.toFixed(1)}${mech.unit}` };
+}
+
+// Targeted cash investment to boost mechanic state — e.g. retraining staff
+// (quality), member drive (churn), ad campaign (hype), grand opening (capacity).
+export function investBusinessOps(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId)!;
+  const cost = Math.round(def.startupCost * 0.06 * biz.level);
+  if (cost > state.stats.cash) return fail(state, `Need ${money(cost)}`);
+  const mech = mechanicFor(biz);
+  const s = clone(state);
+  s.stats.cash -= cost;
+  const delta = (mech.max - mech.min) * 0.25;
+  s.businesses[index] = { ...biz, mState: Math.min(mech.max, biz.mState + delta) };
+  return { state: s, ok: true, message: `Invested in ${mech.label.toLowerCase()}` };
+}
+
+// Hire a manager into one of three specialty roles. Replaces the previous
+// "hireEmployee" (employees added cost with no benefit). Fires the current
+// manager if one is already in place (single slot per business for now).
+export function hireManager(state: GameState, index: number, specialty: ManagerSpecialty, level = 1): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId)!;
+  const cost = Math.round(def.startupCost * (0.04 + 0.03 * level));
+  if (cost > state.stats.cash) return fail(state, `Need ${money(cost)} signing bonus`);
+  const s = clone(state);
+  s.stats.cash -= cost;
+  s.businesses[index] = { ...biz, manager: makeManager(specialty, level, biz) };
+  return { state: s, ok: true, message: `Hired ${s.businesses[index].manager!.name}` };
+}
+
+export function fireManager(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz || !biz.manager) return fail(state, "No manager to fire");
+  const s = clone(state);
+  // Severance — one month's salary.
+  s.stats.cash = Math.max(0, s.stats.cash - biz.manager.salaryPerTick * 30);
+  s.businesses[index] = { ...biz, manager: null };
+  return { state: s, ok: true, message: `Let go of ${biz.manager.name}` };
+}
+
+// Promote the current manager up a tier (cap at 5).
+export function promoteManager(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz?.manager) return fail(state, "No manager");
+  if (biz.manager.level >= 5) return fail(state, "Already top-level");
+  const cost = managerSalary(biz.manager.level + 1, biz) * 60; // 60 ticks of new salary up front
+  if (cost > state.stats.cash) return fail(state, `Need ${money(cost)} to promote`);
+  const s = clone(state);
+  s.stats.cash -= cost;
+  s.businesses[index] = {
+    ...biz,
+    manager: {
+      ...biz.manager,
+      level: biz.manager.level + 1,
+      salaryPerTick: managerSalary(biz.manager.level + 1, biz),
+    },
+  };
+  return { state: s, ok: true, message: `Promoted ${biz.manager.name}` };
+}
+
+// Pick an option on the business's pending event.
+export function resolveEvent(state: GameState, index: number, optionIdx: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz?.event) return fail(state, "No active event");
+  const opt = biz.event.options[optionIdx];
+  if (!opt) return fail(state, "Unknown option");
+  if (opt.cost && opt.cost > state.stats.cash) return fail(state, `Need ${money(opt.cost)}`);
+  const s = clone(state);
+  if (opt.cost) s.stats.cash -= opt.cost;
+  const mech = mechanicFor(biz);
+  const next = { ...biz };
+  if (opt.effect.reserveDelta) next.reserve += opt.effect.reserveDelta;
+  if (opt.effect.cashDelta) s.stats.cash += opt.effect.cashDelta;
+  if (opt.effect.mStateDelta) {
+    next.mState = Math.max(mech.min, Math.min(mech.max, next.mState + opt.effect.mStateDelta));
+  }
+  next.event = null;
+  s.businesses[index] = next;
+  return { state: s, ok: true, message: `${biz.event.title}: ${opt.label}` };
+}
+
+export function sellBusiness(state: GameState, index: number): ActionResult {
+  const biz = state.businesses[index];
+  if (!biz) return fail(state, "You don't own that");
+  const def = BUSINESS_TYPES.find((b) => b.id === biz.businessId)!;
+  const proceeds = salePrice(biz);
+  const s = clone(state);
+  s.stats.cash += proceeds;
+  s.businesses.splice(index, 1);
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `Sold ${def.name} for ${money(proceeds)}` };
+}
+
+// (legacy hireEmployee kept as a no-op alias for any stale UI; new code uses
+// hireManager. Marked deprecated; safe to delete once no UI calls it.)
+export function hireEmployee(state: GameState): ActionResult {
+  return fail(state, "Employees were replaced by managers — hire one instead");
 }
 
 // --------------------------- Education ---------------------------
