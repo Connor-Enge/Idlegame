@@ -59,6 +59,13 @@ export const MINIGAMES: MinigameDef[] = [
   { id: "waiter", name: "Waiter", unit: "served", blurb: "Take orders 📋 and deliver plates 🍽️ before tables walk out.", basePoints: 11 },
   { id: "bartender", name: "Bartender", unit: "cocktails", blurb: "Pour all three to their lines, then serve.", basePoints: 12 },
   { id: "barback", name: "Barback", unit: "ice", blurb: "Catch every ice cube before it hits the floor.", basePoints: 14 },
+  { id: "shiftlead", name: "Shift Lead", unit: "scheduled", blurb: "Tap the matching cell in the schedule grid for each request.", basePoints: 12 },
+  { id: "asstmgr", name: "Triage", unit: "processed", blurb: "Process tasks off three piles before any overflows.", basePoints: 16 },
+  { id: "storemgr", name: "Spot the Anomaly", unit: "spotted", blurb: "Find the one item that doesn't match and tap it.", basePoints: 11 },
+  { id: "salesassoc", name: "Haggle", unit: "deals", blurb: "Set the price, watch the hint, deal at the right moment.", basePoints: 8 },
+  { id: "telemarket", name: "Telemarketer", unit: "sales", blurb: "Tap only during the 💚 PITCH NOW window.", basePoints: 11 },
+  { id: "callcenter", name: "Spell It", unit: "words", blurb: "Type each word by tapping its letters in order.", basePoints: 9 },
+  { id: "recep", name: "Receptionist", unit: "cleared", blurb: "Buzz in green badges; let red badges walk past.", basePoints: 13 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -91,6 +98,13 @@ const JOB_MINIGAME: Record<number, string> = {
   21: "waiter",
   22: "bartender",
   23: "barback",
+  24: "shiftlead",
+  25: "asstmgr",
+  26: "storemgr",
+  27: "salesassoc",
+  28: "telemarket",
+  29: "callcenter",
+  30: "recep",
 };
 
 export function minigameById(id: string): MinigameDef {

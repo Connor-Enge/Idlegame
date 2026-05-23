@@ -33,6 +33,13 @@ import LineCook from "./LineCook";
 import Waiter from "./Waiter";
 import Bartender from "./Bartender";
 import Barback from "./Barback";
+import ShiftLead from "./ShiftLead";
+import AssistantManager from "./AssistantManager";
+import StoreManager from "./StoreManager";
+import SalesAssociate from "./SalesAssociate";
+import Telemarketer from "./Telemarketer";
+import CallCenter from "./CallCenter";
+import Receptionist from "./Receptionist";
 
 // minigameId -> component. Jobs whose mechanic isn't built yet fall back to the
 // clicker, so the chain is always playable. Adding a new mechanic = a new entry.
@@ -67,6 +74,13 @@ const COMPONENTS: Record<string, ComponentType<MinigameProps>> = {
   waiter: Waiter,
   bartender: Bartender,
   barback: Barback,
+  shiftlead: ShiftLead,
+  asstmgr: AssistantManager,
+  storemgr: StoreManager,
+  salesassoc: SalesAssociate,
+  telemarket: Telemarketer,
+  callcenter: CallCenter,
+  recep: Receptionist,
 };
 
 export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {
