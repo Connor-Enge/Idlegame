@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { MinigameProps, ScoreStrip, StartScreen } from "./shared";
 
 const DURATION = 14;
-const PAIRS = 4;
+// Two pairs per round keeps each round ~2s of tapping (was 4 pairs × 4s).
+// A session lands ~9 rounds in line with the rest of the chain.
+const PAIRS = 2;
 
 type Side = "inv" | "pay";
 

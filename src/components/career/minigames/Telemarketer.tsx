@@ -5,8 +5,12 @@ import { MinigameProps, ScoreStrip, StartScreen } from "./shared";
 
 const DURATION = 12;
 const DECAY = 9; // interest lost per second
-const WINDOW = 0.75; // window length in seconds
+const WINDOW = 0.55; // window length in seconds (tighter to keep skill needed)
 const SPIKE_BONUS = 28; // interest restored on a successful pitch
+// Cadence: a new opportunity window every ~0.6-1.1s instead of the old
+// 1.0-2.3s, so the session lands ~8 sales instead of ~3.
+const NEXT_BASE = 0.4;
+const NEXT_RAND = 0.7;
 
 export default function Telemarketer({ onFinish }: MinigameProps) {
   const [running, setRunning] = useState(false);
@@ -26,7 +30,7 @@ export default function Telemarketer({ onFinish }: MinigameProps) {
     let raf = 0;
     let last = performance.now();
     const start = Date.now();
-    nextWindow.current = (Date.now() - start) / 1000 + 1.0;
+    nextWindow.current = (Date.now() - start) / 1000 + NEXT_BASE;
     const loop = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
@@ -45,7 +49,7 @@ export default function Telemarketer({ onFinish }: MinigameProps) {
       if (winRef.current && t > winUntil.current) {
         winRef.current = false;
         setWindowOpen(false);
-        nextWindow.current = t + 1.0 + Math.random() * 1.3;
+        nextWindow.current = t + NEXT_BASE + Math.random() * NEXT_RAND;
       }
       setInterest(intRef.current);
       raf = requestAnimationFrame(loop);

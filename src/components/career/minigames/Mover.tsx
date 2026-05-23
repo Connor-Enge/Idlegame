@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { MinigameProps, ScoreStrip, StartScreen } from "./shared";
 
 const DURATION = 11;
-const STEP = 14;
+// Each correct alternation adds STEP, so 100 / STEP = alternations per box.
+// At 35 that's ~3 alternations → one box every ~1s, ~10 boxes per session.
+const STEP = 35;
 
 export default function Mover({ onFinish }: MinigameProps) {
   const [running, setRunning] = useState(false);

@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { MinigameProps, ScoreStrip, StartScreen } from "./shared";
 
 const DURATION = 13;
-const PER_CUSTOMER = 2.6; // seconds before they walk away
-const PER_TAP = 8.5; // conviction added per pitch
+// Per-customer window short enough that the session yields ~8 sales (was 2.6s
+// × 12 conviction-taps per sale → only ~3 sales/session, way off-pace).
+const PER_CUSTOMER = 1.5; // seconds before they walk away
+const PER_TAP = 28; // conviction added per pitch (4 taps closes a sale)
 
 export default function Kiosk({ onFinish }: MinigameProps) {
   const [running, setRunning] = useState(false);
