@@ -213,7 +213,9 @@ function stepOnce(s: GameState): GameState {
   // 8. Aging & mortality. Time marches on; when the player reaches their rolled
   //    death age, this life ends — net worth converts to legacy credits and a
   //    fresh life begins (the recap is surfaced via life.deathReport).
-  s.life.ageTicks += 1;
+  // Player ages 10 days per engine tick so a full life clears in ~37 min of
+  // continuous play (was ~6 hours), making prestige loops feel responsive.
+  s.life.ageTicks += 10;
   if (currentAge(s.life) >= s.life.deathAge) {
     return rebirth(s);
   }
