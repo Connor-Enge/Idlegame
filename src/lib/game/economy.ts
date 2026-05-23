@@ -9,7 +9,15 @@ import type {
 // Reference (anchor) price per asset for mean reversion — keeps prices in a
 // tradeable band instead of compounding to infinity over long sessions.
 const REF_PRICE = new Map(BASE_ASSETS.map((a) => [a.id, a.price]));
-const REVERSION = 0.03; // pull strength back toward the anchor (log space)
+const REVERSION = 0.08; // pull strength back toward the anchor (log space)
+// Hard band caps how far a price can drift from its anchor before it's clamped.
+// Crypto / leveraged products get a wider band; everything else stays tight so
+// a buy-low / sell-high flip can't print a 100x return in a few hundred ticks.
+const BAND_DEFAULT = 3;
+const BAND_VOLATILE = 5; // crypto + leveraged
+function bandFor(asset: MarketAsset): number {
+  return asset.class === "crypto" || asset.id === "lev3x" ? BAND_VOLATILE : BAND_DEFAULT;
+}
 
 // A lightweight simulated macro economy. Each tick the economy can transition
 // between business-cycle phases, drift its macro indicators, spawn/expire
@@ -182,8 +190,11 @@ export function stepAsset(asset: MarketAsset, economy: EconomyState): MarketAsse
   const reversion = -REVERSION * Math.log(asset.price / ref);
   const change = asset.drift + momentum + sentimentBias + shock + rateDrag + reversion;
   const raw = asset.price * (1 + change) * sectorMult;
-  // Hard safety band: never beyond 25x or below 1/25x the anchor.
-  const price = Math.max(ref / 25, Math.min(ref * 25, Math.max(0.01, round2(raw))));
+  // Hard band: stocks/bonds/commodities ±3x, crypto/leveraged ±5x. Keeps the
+  // peak buy-low / sell-high swing realistic so trading is a steady compounder,
+  // not a one-flip jackpot.
+  const b = bandFor(asset);
+  const price = Math.max(ref / b, Math.min(ref * b, Math.max(0.01, round2(raw))));
   return { ...asset, price, momentum };
 }
 
