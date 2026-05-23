@@ -238,12 +238,16 @@ export function commitGamble(state: GameState, result: GambleResult): ActionResu
 
 // --------------------------- Jobs / Career ---------------------------
 
-// Play one round of the current job's minigame. `points` is the metric the
-// minigame produced (clicks, hits, combos…). Earns cash, grants progression
-// XP, and advances to the next job when the goal is met. Active-only income.
-export function workJob(state: GameState, points: number): ActionResult {
+// Play one round of a job's minigame. `points` is the metric the minigame
+// produced (clicks, hits, combos…). Earns cash + progression XP. If `jobIdx`
+// matches the current job, also advances the chain; if `jobIdx` is a cleared
+// (lower) job, it's a replay — cash and XP only, no chain progress. Active-
+// only income.
+export function workJob(state: GameState, points: number, jobIdx?: number): ActionResult {
   if (!Number.isFinite(points) || points <= 0) return fail(state, "No progress made");
-  const job = jobByIndex(state.career.jobIndex);
+  const target = typeof jobIdx === "number" ? jobIdx : state.career.jobIndex;
+  if (target < 0 || target > state.career.jobIndex) return fail(state, "Job locked");
+  const job = jobByIndex(target);
   const mg = minigameById(job.minigameId);
 
   const s = clone(state);
@@ -251,24 +255,30 @@ export function workJob(state: GameState, points: number): ActionResult {
   const cash = Math.round(points * job.cashPerPoint);
   s.stats.cash += cash;
   c.totalEarned += cash;
-  c.progress += points;
   c.roundsPlayed += 1;
   grantXp(s.progression, careerRoundXp(job));
 
   let message = `+${money(cash)} · ${Math.round(points)} ${mg.unit}`;
-  if (c.progress >= job.goal) {
-    if (c.jobIndex < JOB_COUNT - 1) {
-      c.jobIndex += 1;
-      c.progress = 0;
-      c.jobsCleared += 1;
-      const next = jobByIndex(c.jobIndex);
-      message = `Goal hit! Promoted to ${next.icon} ${next.title} 🎉`;
-    } else {
-      // Already at the top of the ladder — clamp progress, keep earning.
-      c.progress = job.goal;
-      if (c.jobsCleared < JOB_COUNT) c.jobsCleared = JOB_COUNT;
-      message = `+${money(cash)} · top of the ladder 👑`;
+  const isCurrent = target === c.jobIndex;
+
+  if (isCurrent) {
+    c.progress += points;
+    if (c.progress >= job.goal) {
+      if (c.jobIndex < JOB_COUNT - 1) {
+        c.jobIndex += 1;
+        c.progress = 0;
+        c.jobsCleared += 1;
+        const next = jobByIndex(c.jobIndex);
+        message = `Goal hit! Promoted to ${next.icon} ${next.title} 🎉`;
+      } else {
+        // Already at the top of the ladder — clamp progress, keep earning.
+        c.progress = job.goal;
+        if (c.jobsCleared < JOB_COUNT) c.jobsCleared = JOB_COUNT;
+        message = `+${money(cash)} · top of the ladder 👑`;
+      }
     }
+  } else {
+    message += " (replay)";
   }
 
   s.stats.netWorth = computeNetWorth(s);

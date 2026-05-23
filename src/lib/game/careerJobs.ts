@@ -52,6 +52,13 @@ export const MINIGAMES: MinigameDef[] = [
   { id: "usher", name: "Movie Usher", unit: "seated", blurb: "Find the right seat label and tap it before the next ticket.", basePoints: 12 },
   { id: "pizza", name: "Pizza Delivery", unit: "tips", blurb: "Deliver to the hungriest customer first for double pay.", basePoints: 13 },
   { id: "rideshare", name: "Rideshare", unit: "fares", blurb: "Pickup then drop off — surge corners pay double.", basePoints: 11 },
+  { id: "mover", name: "Mover", unit: "boxes", blurb: "Alternate left-right steps to carry each box without stumbling.", basePoints: 12 },
+  { id: "picker", name: "Warehouse Picker", unit: "orders", blurb: "Grab every item on the pick list — any order, nothing extra.", basePoints: 11 },
+  { id: "forklift", name: "Forklift", unit: "loaded", blurb: "Pick the pallet that matches the open slot.", basePoints: 13 },
+  { id: "linecook", name: "Line Cook", unit: "plated", blurb: "Three pans cooking — plate each when the bar is in the green.", basePoints: 12 },
+  { id: "waiter", name: "Waiter", unit: "served", blurb: "Take orders 📋 and deliver plates 🍽️ before tables walk out.", basePoints: 11 },
+  { id: "bartender", name: "Bartender", unit: "cocktails", blurb: "Pour all three to their lines, then serve.", basePoints: 12 },
+  { id: "barback", name: "Barback", unit: "ice", blurb: "Catch every ice cube before it hits the floor.", basePoints: 14 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -77,6 +84,13 @@ const JOB_MINIGAME: Record<number, string> = {
   14: "usher",
   15: "pizza",
   16: "rideshare",
+  17: "mover",
+  18: "picker",
+  19: "forklift",
+  20: "linecook",
+  21: "waiter",
+  22: "bartender",
+  23: "barback",
 };
 
 export function minigameById(id: string): MinigameDef {

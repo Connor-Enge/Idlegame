@@ -1,6 +1,6 @@
 "use client";
 
-import { ComponentType } from "react";
+import { ComponentType, useCallback, useEffect, useRef } from "react";
 import { type Job, minigameById } from "@/lib/game/careerJobs";
 import { MinigameProps } from "./shared";
 import Clicker from "./Clicker";
@@ -26,6 +26,13 @@ import Kiosk from "./Kiosk";
 import Usher from "./Usher";
 import PizzaDelivery from "./PizzaDelivery";
 import Rideshare from "./Rideshare";
+import Mover from "./Mover";
+import WarehousePicker from "./WarehousePicker";
+import Forklift from "./Forklift";
+import LineCook from "./LineCook";
+import Waiter from "./Waiter";
+import Bartender from "./Bartender";
+import Barback from "./Barback";
 
 // minigameId -> component. Jobs whose mechanic isn't built yet fall back to the
 // clicker, so the chain is always playable. Adding a new mechanic = a new entry.
@@ -53,14 +60,31 @@ const COMPONENTS: Record<string, ComponentType<MinigameProps>> = {
   usher: Usher,
   pizza: PizzaDelivery,
   rideshare: Rideshare,
+  mover: Mover,
+  picker: WarehousePicker,
+  forklift: Forklift,
+  linecook: LineCook,
+  waiter: Waiter,
+  bartender: Bartender,
+  barback: Barback,
 };
 
 export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {
+  // The parent re-creates these callbacks every store tick. Without stabilizing
+  // them, every minigame's useEffect deps would change every tick, tearing down
+  // and restarting its interval with a fresh start time — so the on-screen
+  // timer would never decrement. Stable refs let effects run exactly once.
+  const finishRef = useRef(onFinish);
+  const cancelRef = useRef(onCancel);
+  useEffect(() => { finishRef.current = onFinish; cancelRef.current = onCancel; }, [onFinish, onCancel]);
+  const stableFinish = useCallback((p: number) => finishRef.current(p), []);
+  const stableCancel = useCallback(() => cancelRef.current(), []);
+
   const mg = minigameById(job.minigameId);
   const Comp = COMPONENTS[job.minigameId] ?? Clicker;
   return (
     <div className="space-y-3">
-      <button onClick={onCancel} className="text-sm text-muted active:text-white">
+      <button onClick={stableCancel} className="text-sm text-muted active:text-white">
         ← Back to career
       </button>
       <div className="flex items-center gap-3">
@@ -70,7 +94,7 @@ export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {
           <div className="text-[11px] text-muted">{mg.name}</div>
         </div>
       </div>
-      <Comp job={job} onFinish={onFinish} onCancel={onCancel} />
+      <Comp job={job} onFinish={stableFinish} onCancel={stableCancel} />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, Pill, ProgressBar } from "@/components/ui";
 import { EDUCATION } from "@/lib/game/data";
-import { JOBS, JOB_COUNT, minigameById } from "@/lib/game/careerJobs";
+import { JOBS, JOB_COUNT, jobByIndex, minigameById } from "@/lib/game/careerJobs";
 import { currentJob, currentMinigame, jobProgressPct, isFinalJob } from "@/lib/game/career";
 import { canStartStudy, educationById, xpToNext } from "@/lib/game/progression";
 import { MinigameHost } from "@/components/career/minigames";
@@ -14,22 +14,27 @@ import type { GameState } from "@/lib/game/types";
 export default function JobsPage() {
   const state = useGame((s) => s.state);
   const run = useGame((s) => s.run);
-  const [playing, setPlaying] = useState(false);
+  // null = hub view; a number = playing that job index (the current frontier
+  // job, or any previously-cleared job replayed for cash + XP).
+  const [playingIdx, setPlayingIdx] = useState<number | null>(null);
 
   if (!state) return null;
 
   const job = currentJob(state);
 
-  if (playing) {
+  if (playingIdx !== null) {
+    const playJob = jobByIndex(playingIdx);
     return (
       <div className="pb-4">
         <MinigameHost
-          job={job}
+          job={playJob}
           onFinish={(points) => {
-            run(gameActions.workJob(state, points));
-            setPlaying(false);
+            // Pull the latest state so a tick mid-round doesn't get overwritten.
+            const latest = useGame.getState().state;
+            if (latest) run(gameActions.workJob(latest, points, playingIdx));
+            setPlayingIdx(null);
           }}
-          onCancel={() => setPlaying(false)}
+          onCancel={() => setPlayingIdx(null)}
         />
       </div>
     );
@@ -85,7 +90,7 @@ export default function JobsPage() {
 
         <p className="mt-3 text-xs text-muted">{mg.blurb}</p>
 
-        <Button className="mt-4 w-full" onClick={() => setPlaying(true)}>
+        <Button className="mt-4 w-full" onClick={() => setPlayingIdx(career.jobIndex)}>
           ▶️ Work — play {mg.name}
         </Button>
       </Card>
@@ -114,15 +119,23 @@ export default function JobsPage() {
         </section>
       )}
 
-      {/* Already cleared */}
+      {/* Already cleared — tap any to replay it for cash + XP (no chain progress). */}
       {career.jobIndex > 0 && (
         <section className="mt-4 space-y-2">
-          <SubHeading>Cleared ({career.jobIndex})</SubHeading>
-          <div className="flex flex-wrap gap-1.5">
+          <SubHeading sub="Tap to replay for cash + XP (doesn't advance the chain).">
+            Cleared ({career.jobIndex})
+          </SubHeading>
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
             {JOBS.slice(0, career.jobIndex).map((j) => (
-              <span key={j.index} title={`#${j.index + 1} ${j.title}`} className="text-lg">
-                {j.icon}
-              </span>
+              <button
+                key={j.index}
+                onPointerDown={() => setPlayingIdx(j.index)}
+                title={`#${j.index + 1} ${j.title}`}
+                className="flex flex-col items-center gap-0.5 rounded-xl bg-white/5 px-2 py-2 active:bg-white/10"
+              >
+                <span className="text-xl">{j.icon}</span>
+                <span className="text-[9px] text-muted">#{j.index + 1}</span>
+              </button>
             ))}
           </div>
         </section>
