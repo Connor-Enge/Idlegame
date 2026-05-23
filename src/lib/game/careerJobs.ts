@@ -66,6 +66,13 @@ export const MINIGAMES: MinigameDef[] = [
   { id: "telemarket", name: "Telemarketer", unit: "sales", blurb: "Tap only during the 💚 PITCH NOW window.", basePoints: 11 },
   { id: "callcenter", name: "Spell It", unit: "words", blurb: "Type each word by tapping its letters in order.", basePoints: 9 },
   { id: "recep", name: "Receptionist", unit: "cleared", blurb: "Buzz in green badges; let red badges walk past.", basePoints: 13 },
+  { id: "dataentry", name: "Speed Read", unit: "entered", blurb: "Memorize the flashing code, then tap the match.", basePoints: 10 },
+  { id: "teller", name: "Bank Teller", unit: "verified", blurb: "Approve when name matches ID, decline when it doesn't.", basePoints: 13 },
+  { id: "loan", name: "Loan Officer", unit: "decisions", blurb: "Approve only if both credit and income clear the bar.", basePoints: 13 },
+  { id: "insurance", name: "Insurance Agent", unit: "quoted", blurb: "Match the risk score to the right tier.", basePoints: 13 },
+  { id: "realestate", name: "Bidding War", unit: "closed", blurb: "Always accept the highest visible offer — they shuffle constantly.", basePoints: 11 },
+  { id: "paralegal", name: "Paralegal", unit: "filed", blurb: "Tap the cases in chronological order.", basePoints: 9 },
+  { id: "accountant", name: "Accountant", unit: "balanced", blurb: "Allocate transactions to Debit or Credit and keep both columns even.", basePoints: 9 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -105,6 +112,13 @@ const JOB_MINIGAME: Record<number, string> = {
   28: "telemarket",
   29: "callcenter",
   30: "recep",
+  31: "dataentry",
+  32: "teller",
+  33: "loan",
+  34: "insurance",
+  35: "realestate",
+  36: "paralegal",
+  37: "accountant",
 };
 
 export function minigameById(id: string): MinigameDef {
