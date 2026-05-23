@@ -8,6 +8,6 @@ export const dynamic = "force-dynamic";
 // it's the single source of truth for asset prices, history and the macro
 // economy. Client-side ticks no longer simulate either.
 export async function GET() {
-  const m = getMarket();
+  const m = await getMarket();
   return NextResponse.json(m, { headers: { "Cache-Control": "no-store" } });
 }

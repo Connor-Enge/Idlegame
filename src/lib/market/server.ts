@@ -1,14 +1,19 @@
-// Shared market singleton. All players see the SAME prices, economy phase
-// and history — the market is owned by the server, not simulated per-player.
+// Shared market — the single source of truth for prices, economy phase, and
+// price history that every player polls (see /api/market). State is persisted
+// in the `market` table (one row, id = "global") so multi-instance / multi-
+// region deployments all read & write the same snapshot. Without that, each
+// serverless instance has its own in-memory copy and players hitting
+// different instances see different prices.
 //
 // The market is fully procedural and unbounded: prices have no min/max cap.
-// A stock can trend up indefinitely (the anchor drifts to follow), or grind
-// down. When a stock's price collapses far enough it's declared bankrupt,
-// delisted, and replaced in the same slot by a freshly-generated IPO.
-//
-// State lives in this module's memory; the singleton is advanced lazily when
-// any request reads it (so we don't need a cron / background worker).
+// A stock can run for a long time, or grind down. When a stock's price
+// collapses far enough it's declared bankrupt, delisted, and replaced in the
+// same slot by a freshly-generated IPO with a new id/symbol/sector/etc.
 
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { ensureSchema } from "@/lib/db/ensure";
+import { market as marketTable } from "@/lib/db/schema";
 import { ASSET_HISTORY_MAX, BASE_ASSETS } from "@/lib/game/data";
 import { initialEconomy, stepAsset, stepEconomy } from "@/lib/game/economy";
 import { ensureHistory } from "@/lib/game/investing";
@@ -17,7 +22,7 @@ import type { EconomyState, MarketAsset } from "@/lib/game/types";
 const TICK_MS = 1000;
 // Cap how many ticks we'll catch up in a single request — if the process has
 // been idle for hours we don't want one call to chew CPU replaying every tick.
-const MAX_CATCHUP_TICKS = 120;
+const MAX_CATCHUP_TICKS = 600;
 
 interface Market {
   assets: MarketAsset[];
@@ -26,8 +31,7 @@ interface Market {
   nextIpoSeq: number;
 }
 
-// Stash on globalThis so Next.js dev HMR doesn't reset the market every save.
-const g = globalThis as unknown as { __sharedMarket?: Market };
+const MARKET_KEY = "global";
 
 function init(): Market {
   return {
@@ -72,7 +76,7 @@ function pick<T>(arr: T[]): T {
 function fmtSym(seq: number): string {
   // Squash to base-26 letters so the ticker stays a real-looking 3-letter symbol.
   const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let n = (seq * 1373 + 11) % (26 * 26 * 26);
+  const n = (seq * 1373 + 11) % (26 * 26 * 26);
   return L[Math.floor(n / 676)] + L[Math.floor((n % 676) / 26)] + L[n % 26];
 }
 
@@ -80,7 +84,7 @@ function generateIPO(seq: number, listedAt: number): MarketAsset {
   const prefix = pick(IPO_PREFIX);
   const suffix = pick(IPO_SUFFIX);
   const sector = pick(IPO_SECTORS);
-  // Volatility tuned per sector flavor; tech/crypto-ish picks land higher.
+  // Volatility tuned per sector flavor; tech / auto picks land higher.
   const baseVol = sector === "tech" ? 0.025 + Math.random() * 0.025
     : sector === "energy" ? 0.020 + Math.random() * 0.020
     : sector === "auto" ? 0.020 + Math.random() * 0.025
@@ -91,7 +95,7 @@ function generateIPO(seq: number, listedAt: number): MarketAsset {
   // IPO prices vary; small cap to mid cap.
   const price = round2(8 + Math.random() * 240);
   const id = `ipo_${seq}`;
-  const asset: MarketAsset = {
+  return ensureHistory({
     id,
     symbol: fmtSym(seq),
     name: `${prefix} ${suffix}`,
@@ -104,8 +108,7 @@ function generateIPO(seq: number, listedAt: number): MarketAsset {
     blurb: `Freshly listed: ${prefix} ${suffix}. ${sector.charAt(0).toUpperCase() + sector.slice(1)} sector debut at $${price}.`,
     anchor: price,
     listedAt,
-  };
-  return ensureHistory(asset);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -133,15 +136,41 @@ function tickOnce(m: Market): void {
   }
 }
 
-export function getMarket(): { assets: MarketAsset[]; economy: EconomyState } {
-  if (!g.__sharedMarket) g.__sharedMarket = init();
-  const m = g.__sharedMarket;
-  const now = Date.now();
-  const elapsed = now - m.lastTickAt;
-  const ticks = Math.min(MAX_CATCHUP_TICKS, Math.max(0, Math.floor(elapsed / TICK_MS)));
-  for (let i = 0; i < ticks; i++) tickOnce(m);
-  if (ticks > 0) m.lastTickAt += ticks * TICK_MS;
-  return { assets: m.assets, economy: m.economy };
+// ---------------------------------------------------------------------------
+// Persistence: the live state lives in the `market` table, one row keyed
+// "global". Reads acquire a row lock so concurrent requests don't all advance
+// the same N ticks and overwrite each other.
+// ---------------------------------------------------------------------------
+
+export async function getMarket(): Promise<{ assets: MarketAsset[]; economy: EconomyState }> {
+  await ensureSchema();
+  return await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(marketTable)
+      .where(eq(marketTable.id, MARKET_KEY))
+      .for("update")
+      .limit(1);
+    let m: Market;
+    if (rows.length === 0) {
+      m = init();
+      await tx.insert(marketTable).values({ id: MARKET_KEY, data: m as unknown as object });
+    } else {
+      m = rows[0].data as unknown as Market;
+    }
+    const now = Date.now();
+    const elapsed = now - m.lastTickAt;
+    const ticks = Math.min(MAX_CATCHUP_TICKS, Math.max(0, Math.floor(elapsed / TICK_MS)));
+    for (let i = 0; i < ticks; i++) tickOnce(m);
+    if (ticks > 0) {
+      m.lastTickAt += ticks * TICK_MS;
+      await tx
+        .update(marketTable)
+        .set({ data: m as unknown as object, updatedAt: new Date() })
+        .where(eq(marketTable.id, MARKET_KEY));
+    }
+    return { assets: m.assets, economy: m.economy };
+  });
 }
 
 function round2(v: number): number {

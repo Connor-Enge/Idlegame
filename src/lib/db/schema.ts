@@ -60,6 +60,16 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Single-row table holding the shared market state. Persisted so that every
+// server instance reads from the same snapshot — without it, each instance
+// would run its own in-memory market and players would see different prices.
+export const market = pgTable("market", {
+  id: text("id").primaryKey(),
+  data: jsonb("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type PlayerRow = typeof players.$inferSelect;
 export type NewPlayerRow = typeof players.$inferInsert;
 export type UserRow = typeof users.$inferSelect;
+export type MarketRow = typeof market.$inferSelect;

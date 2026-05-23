@@ -42,6 +42,13 @@ async function run(): Promise<void> {
       "created_at" timestamp with time zone DEFAULT now() NOT NULL
     )
   `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "market" (
+      "id" text PRIMARY KEY NOT NULL,
+      "data" jsonb NOT NULL,
+      "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+    )
+  `);
   // Idempotent add of newer columns / indexes so existing DBs pick them up
   // without a separate migration step. Safe to re-run on every cold start.
   await db.execute(sql`

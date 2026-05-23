@@ -101,13 +101,15 @@ export function normalizeState(s: GameState): GameState {
     }
   }
 
-  // Reconcile the live asset list with any newly added instruments while
-  // preserving simulated prices + chart history for assets the player had.
-  const known = new Map((s.assets ?? []).map((a) => [a.id, a]));
-  s.assets = BASE_ASSETS.map((a) => {
-    const prev = known.get(a.id);
-    return ensureHistory({ ...a, price: prev?.price ?? a.price, history: prev?.history, momentum: prev?.momentum });
-  });
+  // The shared server market (src/lib/market/server.ts) owns assets now.
+  // Whatever's currently in s.assets is the latest snapshot the client has
+  // polled — DON'T rebuild it from BASE_ASSETS each tick or procedural IPOs
+  // and current prices get clobbered. Just ensure history exists for charts.
+  if (!s.assets || s.assets.length === 0) {
+    s.assets = BASE_ASSETS.map((a) => ensureHistory({ ...a }));
+  } else {
+    s.assets = s.assets.map((a) => ensureHistory({ ...a }));
+  }
 
   // Backfill the brokerage layer for saves created before it existed.
   if (!s.investing) {
