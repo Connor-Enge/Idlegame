@@ -19,6 +19,13 @@ import Dishwasher from "./Dishwasher";
 import Busser from "./Busser";
 import FastFood from "./FastFood";
 import Barista from "./Barista";
+import Cashier from "./Cashier";
+import StockClerk from "./StockClerk";
+import Bagger from "./Bagger";
+import Kiosk from "./Kiosk";
+import Usher from "./Usher";
+import PizzaDelivery from "./PizzaDelivery";
+import Rideshare from "./Rideshare";
 
 // minigameId -> component. Jobs whose mechanic isn't built yet fall back to the
 // clicker, so the chain is always playable. Adding a new mechanic = a new entry.
@@ -39,6 +46,13 @@ const COMPONENTS: Record<string, ComponentType<MinigameProps>> = {
   busser: Busser,
   fastfood: FastFood,
   barista: Barista,
+  cashier: Cashier,
+  stockclerk: StockClerk,
+  bagger: Bagger,
+  kiosk: Kiosk,
+  usher: Usher,
+  pizza: PizzaDelivery,
+  rideshare: Rideshare,
 };
 
 export function MinigameHost({ job, onFinish, onCancel }: MinigameProps) {

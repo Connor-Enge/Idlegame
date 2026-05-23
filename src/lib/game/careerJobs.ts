@@ -45,6 +45,13 @@ export const MINIGAMES: MinigameDef[] = [
   { id: "busser", name: "Busser", unit: "steady", blurb: "Keep the loaded tray level without dropping it.", basePoints: 14 },
   { id: "fastfood", name: "Fast Food Cook", unit: "orders", blurb: "Build each burger by tapping ingredients in order.", basePoints: 11 },
   { id: "barista", name: "Barista", unit: "shots", blurb: "Pull each espresso shot on beat.", basePoints: 13 },
+  { id: "cashier", name: "Cashier", unit: "customers", blurb: "Tap bills to make exact change for each customer.", basePoints: 10 },
+  { id: "stockclerk", name: "Stock Clerk", unit: "stocked", blurb: "Place each item on the matching shelf.", basePoints: 14 },
+  { id: "bagger", name: "Bagger", unit: "bagged", blurb: "Sort items into the right bag before they roll off the conveyor.", basePoints: 12 },
+  { id: "kiosk", name: "Kiosk Pitch", unit: "sales", blurb: "Mash to fill each shopper's conviction bar before they walk away.", basePoints: 10 },
+  { id: "usher", name: "Movie Usher", unit: "seated", blurb: "Find the right seat label and tap it before the next ticket.", basePoints: 12 },
+  { id: "pizza", name: "Pizza Delivery", unit: "tips", blurb: "Deliver to the hungriest customer first for double pay.", basePoints: 13 },
+  { id: "rideshare", name: "Rideshare", unit: "fares", blurb: "Pickup then drop off — surge corners pay double.", basePoints: 11 },
 ];
 
 // Generic mechanics rotated through any job that doesn't have a bespoke game.
@@ -63,6 +70,13 @@ const JOB_MINIGAME: Record<number, string> = {
   7: "busser",
   8: "fastfood",
   9: "barista",
+  10: "cashier",
+  11: "stockclerk",
+  12: "bagger",
+  13: "kiosk",
+  14: "usher",
+  15: "pizza",
+  16: "rideshare",
 };
 
 export function minigameById(id: string): MinigameDef {
