@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, SectionTitle, Pill, ProgressBar } from "@/components/ui";
-import { BUSINESS_TYPES, RETIRE_THRESHOLD } from "@/lib/game/data";
+import { BUSINESS_TYPES, FEATURE_UNLOCKS, RETIRE_THRESHOLD } from "@/lib/game/data";
 import { jobByIndex } from "@/lib/game/careerJobs";
-import { canRetire, legacyGain, nextUnlock, xpToNext } from "@/lib/game/progression";
+import { canRetire, hasFeature, legacyGain, nextUnlock, xpToNext } from "@/lib/game/progression";
 
 export default function HomePage() {
   const state = useGame((s) => s.state);
@@ -104,9 +104,27 @@ export default function HomePage() {
       <div className="grid grid-cols-2 gap-3">
         <Tile href="/jobs" icon="💼" title={jobTitle} sub="Career" />
         <Tile href="/gambling" icon="🎰" title="Casino" sub="Push your luck" />
-        <Tile href="/invest" icon="📈" title={`${holdings.length} positions`} sub="Markets" />
-        <Tile href="/realestate" icon="🏘️" title={`${properties.length} props`} sub="Real estate" />
-        <Tile href="/business" icon="🏢" title={`${businesses.length} owned`} sub="Businesses" />
+        <Tile
+          href="/invest"
+          icon="📈"
+          title={hasFeature(state, "invest") ? `${holdings.length} positions` : "Locked"}
+          sub={hasFeature(state, "invest") ? "Markets" : `🔒 ${money(featureCost("invest"))} net worth`}
+          locked={!hasFeature(state, "invest")}
+        />
+        <Tile
+          href="/realestate"
+          icon="🏘️"
+          title={hasFeature(state, "realestate") ? `${properties.length} props` : "Locked"}
+          sub={hasFeature(state, "realestate") ? "Real estate" : `🔒 ${money(featureCost("realestate"))} net worth`}
+          locked={!hasFeature(state, "realestate")}
+        />
+        <Tile
+          href="/business"
+          icon="🏢"
+          title={hasFeature(state, "business") ? `${businesses.length} owned` : "Locked"}
+          sub={hasFeature(state, "business") ? "Businesses" : `🔒 ${money(featureCost("business"))} net worth`}
+          locked={!hasFeature(state, "business")}
+        />
         <Tile href="/economy" icon="🌍" title="Economy" sub="Macro & events" />
         <Tile href="/goals" icon="🏆" title={`${progression.achievements.length} unlocked`} sub="Goals" />
         <Tile href="/leaderboard" icon="📊" title="Leaderboard" sub="Top players" />
@@ -140,15 +158,31 @@ function Breakdown({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Tile({ href, icon, title, sub }: { href: string; icon: string; title: string; sub: string }) {
+function featureCost(flag: "invest" | "business" | "realestate"): number {
+  return FEATURE_UNLOCKS.find((r) => r.flag === flag)?.netWorth ?? 0;
+}
+
+function Tile({
+  href,
+  icon,
+  title,
+  sub,
+  locked,
+}: {
+  href: string;
+  icon: string;
+  title: string;
+  sub: string;
+  locked?: boolean;
+}) {
   return (
     <Link
       href={href}
-      className="flex flex-col gap-1 rounded-2xl border border-white/5 bg-bg-card p-4 active:scale-[0.98] transition"
+      className={`flex flex-col gap-1 rounded-2xl border border-white/5 bg-bg-card p-4 active:scale-[0.98] transition ${locked ? "opacity-70 grayscale" : ""}`}
     >
       <span className="text-2xl">{icon}</span>
       <span className="truncate text-sm font-semibold">{title}</span>
-      <span className="text-[11px] text-muted">{sub}</span>
+      <span className={`text-[11px] ${locked ? "text-amber-300" : "text-muted"}`}>{sub}</span>
     </Link>
   );
 }

@@ -3,8 +3,8 @@
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
-import { PROPERTIES } from "@/lib/game/data";
-import { educationById, hasFeature, nextUnlock } from "@/lib/game/progression";
+import { FEATURE_UNLOCKS, PROPERTIES } from "@/lib/game/data";
+import { educationById, hasFeature } from "@/lib/game/progression";
 
 export default function RealEstatePage() {
   const state = useGame((s) => s.state);
@@ -13,16 +13,13 @@ export default function RealEstatePage() {
   const { properties, stats, progression } = state;
 
   if (!hasFeature(state, "realestate")) {
-    const nu = nextUnlock(state);
+    const need = FEATURE_UNLOCKS.find((r) => r.flag === "realestate")?.netWorth ?? 0;
+    const remaining = Math.max(0, need - stats.netWorth);
     return (
       <LockedScreen
         icon="🏘️"
         title="Real Estate"
-        requirement={
-          nu && nu.flag === "realestate"
-            ? `Reach ${money(nu.netWorth)} net worth to access the property market. (You: ${money(stats.netWorth)})`
-            : "Keep building net worth to unlock real estate."
-        }
+        requirement={`Reach ${money(need)} net worth to access the property market. You're at ${money(stats.netWorth)} — ${money(remaining)} to go.`}
       />
     );
   }

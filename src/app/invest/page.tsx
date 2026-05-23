@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useGame } from "@/lib/store";
 import { money, pct } from "@/lib/format";
 import { LockedScreen } from "@/components/ui";
-import { hasFeature, nextUnlock } from "@/lib/game/progression";
+import { FEATURE_UNLOCKS } from "@/lib/game/data";
+import { hasFeature } from "@/lib/game/progression";
 import { buyingPower } from "@/lib/game/investing";
 import type { MarketAsset } from "@/lib/game/types";
 import AssetRow, { windowChange } from "@/components/invest/AssetRow";
@@ -25,16 +26,13 @@ export default function InvestPage() {
   const { assets, holdings, stats, progression, investing } = state;
 
   if (!hasFeature(state, "invest")) {
-    const nu = nextUnlock(state);
+    const need = FEATURE_UNLOCKS.find((r) => r.flag === "invest")?.netWorth ?? 0;
+    const remaining = Math.max(0, need - stats.netWorth);
     return (
       <LockedScreen
         icon="📈"
         title="Investing"
-        requirement={
-          nu && nu.flag === "invest"
-            ? `Reach ${money(nu.netWorth)} net worth to open a brokerage account. (You: ${money(stats.netWorth)})`
-            : "Build more net worth to unlock investing."
-        }
+        requirement={`Reach ${money(need)} net worth to open a brokerage account. You're at ${money(stats.netWorth)} — ${money(remaining)} to go.`}
       />
     );
   }

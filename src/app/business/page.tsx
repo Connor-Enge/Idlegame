@@ -3,8 +3,8 @@
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { Button, Card, SectionTitle, Pill, LockedScreen } from "@/components/ui";
-import { BUSINESS_TYPES } from "@/lib/game/data";
-import { hasFeature, nextUnlock } from "@/lib/game/progression";
+import { BUSINESS_TYPES, FEATURE_UNLOCKS } from "@/lib/game/data";
+import { hasFeature } from "@/lib/game/progression";
 
 export default function BusinessPage() {
   const state = useGame((s) => s.state);
@@ -13,16 +13,13 @@ export default function BusinessPage() {
   const { businesses, stats, economy, progression } = state;
 
   if (!hasFeature(state, "business")) {
-    const nu = nextUnlock(state);
+    const need = FEATURE_UNLOCKS.find((r) => r.flag === "business")?.netWorth ?? 0;
+    const remaining = Math.max(0, need - stats.netWorth);
     return (
       <LockedScreen
         icon="🏢"
         title="Businesses"
-        requirement={
-          nu && nu.flag === "business"
-            ? `Reach ${money(nu.netWorth)} net worth to register a business. (You: ${money(stats.netWorth)})`
-            : "Unlock investing first, then keep building net worth."
-        }
+        requirement={`Reach ${money(need)} net worth to register a business. You're at ${money(stats.netWorth)} — ${money(remaining)} to go.`}
       />
     );
   }
