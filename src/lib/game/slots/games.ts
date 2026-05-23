@@ -196,16 +196,16 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // expectation rather than chasing any single run's noise.
 const CAL: Record<string, number> = {
   scatter: 0.001073,
-  megaways: 0.02457,
+  megaways: 0.0248,
   cluster: 3.516,
   holdwin: 0.0442,
-  cascade: 0.00712,
+  cascade: 0.00714,
   book: 0.558,
   jackpot: 1.813,
   ways243: 0.1513,
   video: 0.1852,
   classic: 0.865,
-  shadows: 1.035,
+  shadows: 1.068,
 };
 
 const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
