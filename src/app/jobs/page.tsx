@@ -74,6 +74,22 @@ export default function JobsPage() {
         </div>
       </div>
 
+      {/* How careers work — compact, always visible. Three-step loop + the
+          two side rules that aren't obvious from the rest of the UI. */}
+      <Card className="mb-3 bg-white/[0.03]">
+        <div className="text-[11px] uppercase tracking-wider text-muted">How careers work</div>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+          <Step n="1" icon="▶️" label="Play" body="Tap Work to play this job's minigame." />
+          <Step n="2" icon="📈" label="Progress" body="Each round earns cash and fills the goal bar." />
+          <Step n="3" icon="🎉" label="Promote" body="Hit the goal to unlock the next job." />
+        </div>
+        <ul className="mt-3 space-y-0.5 text-[11px] text-muted">
+          <li>• Cleared jobs (below) can be replayed any time for cash + XP — they don't advance the chain.</li>
+          <li>• Some jobs need a credential (🪪 chip) — study below to unlock them.</li>
+          <li>• Higher jobs pay more per round. Better play (more points) = more cash.</li>
+        </ul>
+      </Card>
+
       {/* Current job */}
       <Card className="border-accent/30">
         <div className="flex items-start justify-between gap-3">
@@ -89,12 +105,17 @@ export default function JobsPage() {
 
         <div className="mt-4">
           <div className="mb-1 flex justify-between text-[11px] text-muted">
-            <span>{final ? "Career maxed" : "Goal to unlock next job"}</span>
+            <span>{final ? "Top of the ladder" : "Fill the bar → promote"}</span>
             <span>
               {Math.floor(career.progress)}/{job.goal} {mg.unit}
             </span>
           </div>
           <ProgressBar value={pct} />
+          {!final && !goalMet && (
+            <div className="mt-1 text-[10px] text-muted">
+              About {Math.max(1, Math.ceil((job.goal - career.progress) / mg.basePoints))} more good round{Math.ceil((job.goal - career.progress) / mg.basePoints) === 1 ? "" : "s"} to clear.
+            </div>
+          )}
         </div>
 
         <p className="mt-3 text-xs text-muted">{mg.blurb}</p>
@@ -123,7 +144,7 @@ export default function JobsPage() {
       {/* What's next on the ladder */}
       {!final && (
         <section className="mt-4 space-y-2">
-          <SubHeading sub="Hit each job's goal to unlock the next.">Coming up</SubHeading>
+          <SubHeading sub="Unlocks after you clear your current goal. 🪪 chips mark jobs that need a credential first.">Coming up</SubHeading>
           {JOBS.slice(career.jobIndex + 1, career.jobIndex + 6).map((j) => {
             const jmg = minigameById(j.minigameId);
             const credShort = j.requiresCredential ? educationById(j.requiresCredential)?.short ?? j.requiresCredential : null;
@@ -154,7 +175,7 @@ export default function JobsPage() {
       {/* Already cleared — tap any to replay it for cash + XP (no chain progress). */}
       {career.jobIndex > 0 && (
         <section className="mt-4 space-y-2">
-          <SubHeading sub="Tap to replay for cash + XP (doesn't advance the chain).">
+          <SubHeading sub="Tap any past job to replay its minigame for cash + XP. Doesn't advance the chain — pure side income.">
             Cleared ({career.jobIndex})
           </SubHeading>
           <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
@@ -186,7 +207,7 @@ function LicensesSection({ state, run }: { state: GameState; run: RunFn }) {
   const { progression } = state;
   return (
     <section className="mt-5 space-y-2">
-      <SubHeading sub="Optional — unlock licensed investments and commercial property.">
+      <SubHeading sub="Required for some 🪪-tagged jobs above, plus commercial real estate and the leveraged fund. Studying takes real time but runs in the background.">
         Education &amp; Licenses
       </SubHeading>
       {progression.studyingId && (
@@ -230,6 +251,19 @@ function SubHeading({ children, sub }: { children: React.ReactNode; sub?: string
     <div>
       <div className="text-xs font-semibold uppercase tracking-wider text-muted">{children}</div>
       {sub && <div className="text-[11px] text-muted/80">{sub}</div>}
+    </div>
+  );
+}
+
+function Step({ n, icon, label, body }: { n: string; icon: string; label: string; body: string }) {
+  return (
+    <div className="rounded-lg bg-white/5 p-2">
+      <div className="flex items-center gap-1 text-[10px] font-bold text-muted">
+        <span>{n}</span>
+        <span className="text-base">{icon}</span>
+      </div>
+      <div className="mt-1 text-xs font-semibold">{label}</div>
+      <div className="mt-0.5 text-[10px] text-muted">{body}</div>
     </div>
   );
 }
