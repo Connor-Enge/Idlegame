@@ -151,7 +151,21 @@ export interface Job {
   minigameId: string;
   goal: number; // total metric points to clear this job & unlock the next
   cashPerPoint: number; // cash earned per metric point
+  requiresCredential?: string; // education id needed to take this job
 }
+
+// A handful of jobs along the chain gate on an education credential. You must
+// earn the credential AND hit the previous job's goal to advance into them.
+// Sparse on purpose — only the thematic tier-jumps need a license.
+const JOB_CREDENTIAL: Record<number, string> = {
+  10: "hs", // Cashier — first office/retail tier
+  20: "trade", // Forklift Operator — skilled trades
+  35: "re-license", // Real Estate Agent
+  37: "degree", // Paralegal — professional work
+  67: "mba", // Chief of Staff — executive tier
+  70: "phd", // CTO — elite tech
+  75: "series7", // Hedge Fund Analyst — high finance
+};
 
 const JOB_TITLES: Array<[string, string]> = [
   ["Lemonade Stand Kid", "🍋"], ["Paper Route", "📰"], ["Dog Walker", "🐕"], ["Lawn Mower", "🌱"],
@@ -191,7 +205,8 @@ function buildJobs(): Job[] {
     // A good session pays roughly this much, regardless of the mechanic's scale.
     const sessionCash = CAREER_CASH_BASE * Math.pow(CAREER_CASH_GROWTH, index);
     const cashPerPoint = sessionCash / mg.basePoints;
-    return { index, title, icon, minigameId: mg.id, goal, cashPerPoint };
+    const requiresCredential = JOB_CREDENTIAL[index];
+    return { index, title, icon, minigameId: mg.id, goal, cashPerPoint, requiresCredential };
   });
 }
 

@@ -47,6 +47,15 @@ export default function JobsPage() {
   const xpPct = (progression.xp / xpToNext(progression.level)) * 100;
   const perRound = Math.round(mg.basePoints * job.cashPerPoint);
 
+  // Promotion gating: hit the goal AND have any required credential on the
+  // next job. When goal is met but a credential is missing, the chain pauses
+  // here until they study it.
+  const goalMet = !final && career.progress >= job.goal;
+  const nextJob = final ? null : JOBS[career.jobIndex + 1];
+  const nextCred = nextJob?.requiresCredential;
+  const credHeld = !nextCred || progression.credentials.includes(nextCred);
+  const credName = nextCred ? educationById(nextCred)?.name : null;
+
   return (
     <div className="pb-4">
       {/* Header: where you are on the ladder + global level */}
@@ -90,9 +99,25 @@ export default function JobsPage() {
 
         <p className="mt-3 text-xs text-muted">{mg.blurb}</p>
 
-        <Button className="mt-4 w-full" onClick={() => setPlayingIdx(career.jobIndex)}>
-          ▶️ Work — play {mg.name}
-        </Button>
+        {/* Credential gate: goal hit but next job needs a license you don't have. */}
+        {goalMet && !credHeld && (
+          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs">
+            <div className="font-bold text-amber-200">🔒 Promotion blocked</div>
+            <div className="mt-1 text-amber-100/90">
+              Earn <span className="font-bold">{credName ?? nextCred}</span> to unlock {nextJob?.icon} {nextJob?.title}. Study below.
+            </div>
+          </div>
+        )}
+
+        {goalMet && credHeld ? (
+          <Button className="mt-4 w-full" onClick={() => run(gameActions.promote(state))}>
+            🎉 Claim promotion to {nextJob?.icon} {nextJob?.title}
+          </Button>
+        ) : (
+          <Button className="mt-4 w-full" onClick={() => setPlayingIdx(career.jobIndex)}>
+            ▶️ Work — play {mg.name}
+          </Button>
+        )}
       </Card>
 
       {/* What's next on the ladder */}
@@ -101,6 +126,8 @@ export default function JobsPage() {
           <SubHeading sub="Hit each job's goal to unlock the next.">Coming up</SubHeading>
           {JOBS.slice(career.jobIndex + 1, career.jobIndex + 6).map((j) => {
             const jmg = minigameById(j.minigameId);
+            const credShort = j.requiresCredential ? educationById(j.requiresCredential)?.short ?? j.requiresCredential : null;
+            const credMissing = j.requiresCredential && !progression.credentials.includes(j.requiresCredential);
             return (
               <div key={j.index} className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2 opacity-80">
                 <span className="text-2xl grayscale">{j.icon}</span>
@@ -110,6 +137,11 @@ export default function JobsPage() {
                   </div>
                   <div className="text-[11px] text-muted">
                     {jmg.name} · goal {j.goal} {jmg.unit}
+                    {credShort && (
+                      <span className={`ml-2 font-semibold ${credMissing ? "text-amber-300" : "text-accent-2"}`}>
+                        · 🪪 {credShort}{credMissing ? "" : " ✓"}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <span className="text-muted">🔒</span>

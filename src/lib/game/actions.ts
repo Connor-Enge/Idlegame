@@ -265,11 +265,20 @@ export function workJob(state: GameState, points: number, jobIdx?: number): Acti
     c.progress += points;
     if (c.progress >= job.goal) {
       if (c.jobIndex < JOB_COUNT - 1) {
-        c.jobIndex += 1;
-        c.progress = 0;
-        c.jobsCleared += 1;
-        const next = jobByIndex(c.jobIndex);
-        message = `Goal hit! Promoted to ${next.icon} ${next.title} 🎉`;
+        const next = jobByIndex(c.jobIndex + 1);
+        const cred = next.requiresCredential;
+        if (cred && !s.progression.credentials.includes(cred)) {
+          // Goal met but the next job needs a credential the player hasn't
+          // earned yet. Clamp progress at the goal and wait — the UI shows a
+          // "claim promotion" CTA once they study the credential.
+          c.progress = job.goal;
+          message = `Goal hit — earn ${cred.toUpperCase()} to unlock ${next.title}`;
+        } else {
+          c.jobIndex += 1;
+          c.progress = 0;
+          c.jobsCleared += 1;
+          message = `Goal hit! Promoted to ${next.icon} ${next.title} 🎉`;
+        }
       } else {
         // Already at the top of the ladder — clamp progress, keep earning.
         c.progress = job.goal;
@@ -283,6 +292,26 @@ export function workJob(state: GameState, points: number, jobIdx?: number): Acti
 
   s.stats.netWorth = computeNetWorth(s);
   return { state: s, ok: true, message };
+}
+
+// Advance from a credential-gated job once both conditions are met: the
+// player has cleared the goal AND earned the required credential. This is
+// the explicit "claim promotion" button workJob defers to when blocked.
+export function promote(state: GameState): ActionResult {
+  const c = state.career;
+  if (c.jobIndex >= JOB_COUNT - 1) return fail(state, "Already at the top");
+  const job = jobByIndex(c.jobIndex);
+  if (c.progress < job.goal) return fail(state, "Hit the goal first");
+  const next = jobByIndex(c.jobIndex + 1);
+  if (next.requiresCredential && !state.progression.credentials.includes(next.requiresCredential)) {
+    return fail(state, `Need ${next.requiresCredential.toUpperCase()} to advance`);
+  }
+  const s = clone(state);
+  s.career.jobIndex += 1;
+  s.career.progress = 0;
+  s.career.jobsCleared += 1;
+  s.stats.netWorth = computeNetWorth(s);
+  return { state: s, ok: true, message: `Promoted to ${next.icon} ${next.title} 🎉` };
 }
 
 // --------------------------- Real estate ---------------------------
