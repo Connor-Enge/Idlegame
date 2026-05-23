@@ -10,7 +10,7 @@
 // collapses far enough it's declared bankrupt, delisted, and replaced in the
 // same slot by a freshly-generated IPO with a new id/symbol/sector/etc.
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/ensure";
 import { market as marketTable } from "@/lib/db/schema";
@@ -138,39 +138,43 @@ function tickOnce(m: Market): void {
 
 // ---------------------------------------------------------------------------
 // Persistence: the live state lives in the `market` table, one row keyed
-// "global". Reads acquire a row lock so concurrent requests don't all advance
-// the same N ticks and overwrite each other.
+// "global". The Neon HTTP driver doesn't support multi-statement transactions
+// or row locks (it issues each query as a single HTTP call), so we just do
+// read → advance → upsert. Two concurrent requests can race, but they'll both
+// compute roughly the same advancement and last-writer-wins keeps the row
+// converging on the correct state.
 // ---------------------------------------------------------------------------
 
 export async function getMarket(): Promise<{ assets: MarketAsset[]; economy: EconomyState }> {
   await ensureSchema();
-  return await db.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(marketTable)
-      .where(eq(marketTable.id, MARKET_KEY))
-      .for("update")
-      .limit(1);
-    let m: Market;
-    if (rows.length === 0) {
-      m = init();
-      await tx.insert(marketTable).values({ id: MARKET_KEY, data: m as unknown as object });
-    } else {
-      m = rows[0].data as unknown as Market;
-    }
-    const now = Date.now();
-    const elapsed = now - m.lastTickAt;
-    const ticks = Math.min(MAX_CATCHUP_TICKS, Math.max(0, Math.floor(elapsed / TICK_MS)));
-    for (let i = 0; i < ticks; i++) tickOnce(m);
-    if (ticks > 0) {
-      m.lastTickAt += ticks * TICK_MS;
-      await tx
-        .update(marketTable)
-        .set({ data: m as unknown as object, updatedAt: new Date() })
-        .where(eq(marketTable.id, MARKET_KEY));
-    }
-    return { assets: m.assets, economy: m.economy };
-  });
+  const rows = await db
+    .select()
+    .from(marketTable)
+    .where(eq(marketTable.id, MARKET_KEY))
+    .limit(1);
+  let m: Market;
+  if (rows.length === 0) {
+    m = init();
+    // ON CONFLICT DO NOTHING so a parallel initializer doesn't race-fail us.
+    await db
+      .insert(marketTable)
+      .values({ id: MARKET_KEY, data: m as unknown as object })
+      .onConflictDoNothing();
+  } else {
+    m = rows[0].data as unknown as Market;
+  }
+  const now = Date.now();
+  const elapsed = now - m.lastTickAt;
+  const ticks = Math.min(MAX_CATCHUP_TICKS, Math.max(0, Math.floor(elapsed / TICK_MS)));
+  for (let i = 0; i < ticks; i++) tickOnce(m);
+  if (ticks > 0) {
+    m.lastTickAt += ticks * TICK_MS;
+    await db
+      .update(marketTable)
+      .set({ data: m as unknown as object, updatedAt: sql`now()` })
+      .where(eq(marketTable.id, MARKET_KEY));
+  }
+  return { assets: m.assets, economy: m.economy };
 }
 
 function round2(v: number): number {
