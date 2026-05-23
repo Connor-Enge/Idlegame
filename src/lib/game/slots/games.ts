@@ -192,17 +192,17 @@ const cap = (m: number) => Math.min(CAP, Math.round(m * 100) / 100);
 // long-run return-to-player sits around ~90% (house edge ~10%). Tuned against
 // a Monte-Carlo probe; adjust here to retune without touching paytables.
 const CAL: Record<string, number> = {
-  scatter: 0.1039,
-  megaways: 0.0224,
-  cluster: 3.22,
-  holdwin: 0.254,
-  cascade: 0.1307,
-  book: 0.5255,
-  jackpot: 1.64,
-  ways243: 0.4725,
-  video: 0.169,
-  classic: 0.8,
-  shadows: 1.0,
+  scatter: 0.000968,
+  megaways: 0.02236,
+  cluster: 3.16,
+  holdwin: 0.0407,
+  cascade: 0.00649,
+  book: 0.554,
+  jackpot: 1.778,
+  ways243: 0.1415,
+  video: 0.1731,
+  classic: 0.78,
+  shadows: 0.926,
 };
 
 const countSym = (g: Sym[][], s: Sym) => g.reduce((a, col) => a + col.filter((x) => x === s).length, 0);
@@ -389,8 +389,10 @@ const video: SlotGame = (() => {
 const ways243: SlotGame = (() => {
   const SC = "🌙";
   const WILD = "🐾";
-  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", "▪️", WILD, SC];
-  const weights = [22, 18, 14, 9, 5, 26, 5, 4];
+  // Every cell shows a themed symbol — no blank filler. Lower-tier animals
+  // soak the weight a non-paying blank used to occupy.
+  const syms = ["🦊", "🐺", "🦌", "🦅", "🐉", WILD, SC];
+  const weights = [30, 25, 19, 12, 7, 5, 4];
   const table: Record<string, [number, number, number]> = {
     "🦊": [0.2, 0.6, 1.5],
     "🐺": [0.3, 0.8, 2],
@@ -583,8 +585,9 @@ const cluster: SlotGame = (() => {
 // ---------------------------------------------------------------------------
 const cascade: SlotGame = (() => {
   const SC = "🎂";
-  const syms = ["🍫", "🍬", "🍭", "🧁", "🍩", "▪️", SC];
-  const weights = [20, 17, 13, 9, 6, 26, 3];
+  // No blank filler; every cell is a real candy that can hit a way.
+  const syms = ["🍫", "🍬", "🍭", "🧁", "🍩", SC];
+  const weights = [28, 24, 18, 13, 8, 3];
   const table: Record<string, [number, number, number]> = {
     "🍫": [0.2, 0.5, 1.2],
     "🍬": [0.3, 0.7, 1.8],
@@ -668,9 +671,9 @@ const cascade: SlotGame = (() => {
 const scatterPays: SlotGame = (() => {
   const BOMB = "✖️";
   const SC = "🍭";
-  const BLANK = "▪️";
-  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BLANK, BOMB, SC];
-  const weights = [18, 16, 13, 10, 7, 26, 6, 2];
+  // Every cell shows a fruit (or a bomb / scatter) — no inert filler tiles.
+  const syms = ["🍌", "🍎", "🍓", "🍑", "🫐", BOMB, SC];
+  const weights = [25, 23, 18, 14, 10, 6, 2];
   const base: Record<string, [number, number, number]> = {
     "🍌": [0.25, 0.75, 2],
     "🍎": [0.4, 1.2, 3],
@@ -698,7 +701,7 @@ const scatterPays: SlotGame = (() => {
     let pend: Record<string, number> | undefined;
     const bombRoll = () => (fs ? 2 + Math.floor(Math.random() * 99) : 2 + Math.floor(Math.random() * 24));
     while (step < 10) {
-      const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC, BLANK]);
+      const { mult, highlights } = evalScatterPays(grid, pay, 8, [BOMB, SC]);
       if (mult <= 0) {
         if (step > 0) fr.push({ grid: grid.map((c) => [...c]), win: 0, fall: pend });
         break;
@@ -777,9 +780,9 @@ const scatterPays: SlotGame = (() => {
 // ---------------------------------------------------------------------------
 const holdwin: SlotGame = (() => {
   const C = "🪙"; // money symbol — triggers the hold & spin, doesn't pay lines
-  const blank = "▫️";
-  const syms = ["🔔", "🍀", "💵", "💎", C, blank];
-  const weights = [24, 19, 12, 7, 8, 30];
+  // Reels show real paying symbols only; the coin special is its own thing.
+  const syms = ["🔔", "🍀", "💵", "💎", C];
+  const weights = [36, 28, 18, 10, 8];
   // Normal paying base game (ways-to-win) so most spins can land a small win,
   // exactly like a real Lightning Link / 88 Fortunes base game.
   const table: Record<string, [number, number, number]> = {
@@ -840,8 +843,10 @@ const holdwin: SlotGame = (() => {
       if (!trigger) return { frames, totalMult: cap(total) };
 
       // 2. Hold & Win: lock coins, 3 respins that reset whenever a new coin lands.
+      // Non-coin cells keep their originally-spun symbol so the board never
+      // shows inert placeholder squares during the respin phase.
       let respins = 3;
-      const board = grid.map((col, c) => col.map((_, r) => (coins.has(key(c, r)) ? C : blank)));
+      const board = grid.map((col, c) => col.map((sym, r) => (coins.has(key(c, r)) ? C : sym)));
       while (respins > 0 && coins.size < CELLS) {
         respins--;
         let newCoin = false;
