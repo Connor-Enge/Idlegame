@@ -831,21 +831,48 @@ function Ripple({ x, y, w, delay = 0 }: { x: number; y: number; w: number; delay
 }
 
 function Fountain() {
+  // Stone fountain centrepiece — masonry plinth, tiered basin with a
+  // central spout, water arc beads, splash droplets. Sits inside a water
+  // tile so the ring around the plinth reads as the pool.
   return (
-    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", overflow: "visible" }}>
-      {/* Plinth base */}
-      <div style={{ position: "absolute", left: 10, top: 14, width: 12, height: 10, background: "#a8895a", border: "1.5px solid #5b3a1d", borderRadius: 2 }} />
-      {/* Spout column */}
-      <div style={{ position: "absolute", left: 14, top: 6, width: 4, height: 12, background: "#cbd5e1", border: "1px solid #475569" }} />
-      {/* Top spray */}
-      <div style={{ position: "absolute", left: 11, top: -2, width: 10, height: 8, background: "#7dd3fc", borderRadius: "50% 50% 30% 30%", boxShadow: "0 0 4px #38bdf8" }} />
-      {/* Splash droplets, animated */}
-      <div style={{ position: "absolute", left: 6, top: 4, width: 3, height: 3, background: "#bae6fd", borderRadius: "50%", animation: "spray 1.4s ease-in-out infinite" }} />
-      <div style={{ position: "absolute", left: 22, top: 8, width: 3, height: 3, background: "#bae6fd", borderRadius: "50%", animation: "spray 1.4s ease-in-out infinite 0.4s" }} />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background:
+          "linear-gradient(180deg, #4ea0e8 0%, #2563eb 60%, #1e40af 100%)",
+        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.3), inset 1px 1px 0 rgba(255,255,255,0.15)",
+        overflow: "visible",
+      }}
+    >
+      {/* Pool ripples */}
+      <div style={{ position: "absolute", left: 3, top: 26, width: 8, height: 1, background: "rgba(255,255,255,0.6)", borderRadius: 1 }} />
+      <div style={{ position: "absolute", left: 22, top: 26, width: 7, height: 1, background: "rgba(255,255,255,0.4)", borderRadius: 1 }} />
+      {/* Stone plinth — three stacked rectangles for a tiered look */}
+      <div style={{ position: "absolute", left: 8, top: 18, width: 16, height: 6, background: "linear-gradient(180deg, #d4d4d4 0%, #737373 100%)", border: "1.5px solid #404040", borderRadius: 2, boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.5)" }}>
+        {/* Brick lines on the base */}
+        <div style={{ position: "absolute", left: "33%", top: 0, width: 1, height: 4, background: "rgba(0,0,0,0.35)" }} />
+        <div style={{ position: "absolute", left: "66%", top: 0, width: 1, height: 4, background: "rgba(0,0,0,0.35)" }} />
+      </div>
+      <div style={{ position: "absolute", left: 11, top: 13, width: 10, height: 6, background: "linear-gradient(180deg, #e5e5e5 0%, #a1a1aa 100%)", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
+      <div style={{ position: "absolute", left: 13, top: 8, width: 6, height: 6, background: "linear-gradient(180deg, #f1f5f9 0%, #94a3b8 100%)", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
+      {/* Cap dome */}
+      <div style={{ position: "absolute", left: 14, top: 6, width: 4, height: 3, background: "#475569", borderRadius: "50% 50% 0 0", border: "1px solid #1f2937" }} />
+      {/* Water arc — three beads forming a column spray */}
+      <div style={{ position: "absolute", left: 15, top: -2, width: 2, height: 3, background: "#bae6fd", borderRadius: "50%", boxShadow: "0 0 3px #7dd3fc", animation: "fountainSpout 1.6s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", left: 15, top: 1, width: 2, height: 3, background: "#7dd3fc", borderRadius: "50%", animation: "fountainSpout 1.6s ease-in-out infinite 0.15s" }} />
+      <div style={{ position: "absolute", left: 15, top: 4, width: 2, height: 3, background: "#38bdf8", borderRadius: "50%", animation: "fountainSpout 1.6s ease-in-out infinite 0.3s" }} />
+      {/* Side splash droplets */}
+      <div style={{ position: "absolute", left: 6, top: 6, width: 2, height: 2, background: "#bae6fd", borderRadius: "50%", animation: "fountainSpray 1.6s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", left: 24, top: 8, width: 2, height: 2, background: "#bae6fd", borderRadius: "50%", animation: "fountainSpray 1.6s ease-in-out infinite 0.4s" }} />
       <style jsx>{`
-        @keyframes spray {
-          0%, 100% { transform: translateY(0); opacity: 0.4; }
-          50% { transform: translateY(-4px); opacity: 1; }
+        @keyframes fountainSpout {
+          0%, 100% { transform: translateY(0); opacity: 0.8; }
+          50% { transform: translateY(-3px); opacity: 1; }
+        }
+        @keyframes fountainSpray {
+          0% { transform: translate(0, 0); opacity: 1; }
+          100% { transform: translate(var(--dx, 2px), 4px); opacity: 0; }
         }
       `}</style>
     </div>
