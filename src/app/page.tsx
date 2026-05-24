@@ -141,7 +141,7 @@ export default function HomePage() {
         <Tile href="/economy" icon="🌍" title="Economy" sub="Macro & events" />
         <Tile href="/goals" icon="🏆" title={`${progression.achievements.length} unlocked`} sub="Goals" />
         <Tile href="/leaderboard" icon="📊" title="Leaderboard" sub="Top players" />
-        <Tile href="/town" icon="🗺️" title="3D Town" sub="Walk around" />
+        <Tile href="/dev" icon="🗺️" title="3D Town" sub="Walk around" />
       </div>
 
       {economy.activeEvents.length > 0 && (

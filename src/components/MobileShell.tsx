@@ -16,7 +16,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const path = usePathname();
   // The 3D town fills the screen and has its own HUD + menu link, so we
   // hide the StatBar and BottomNav on that route to avoid double chrome.
-  const fullscreen = path === "/town";
+  const fullscreen = path === "/dev";
 
   useEffect(() => {
     init();
