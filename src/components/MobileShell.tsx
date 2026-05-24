@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useGame } from "@/lib/store";
 import StatBar from "./StatBar";
 import BottomNav from "./BottomNav";
@@ -12,6 +13,10 @@ import AchievementPopup from "./AchievementPopup";
 export default function MobileShell({ children }: { children: React.ReactNode }) {
   const init = useGame((s) => s.init);
   const state = useGame((s) => s.state);
+  const path = usePathname();
+  // The 3D town fills the screen and has its own HUD + menu link, so we
+  // hide the StatBar and BottomNav on that route to avoid double chrome.
+  const fullscreen = path === "/town";
 
   useEffect(() => {
     init();
@@ -19,15 +24,15 @@ export default function MobileShell({ children }: { children: React.ReactNode })
 
   return (
     <>
-      <StatBar />
-      <main className="flex-1 overflow-y-auto no-scrollbar px-4 pb-28 pt-2">
+      {!fullscreen && <StatBar />}
+      <main className={fullscreen ? "h-full" : "flex-1 overflow-y-auto no-scrollbar px-4 pb-28 pt-2"}>
         {state ? children : <Loading />}
       </main>
       <Toast />
       <AchievementPopup />
       <OfflineModal />
       <DeathModal />
-      <BottomNav />
+      {!fullscreen && <BottomNav />}
     </>
   );
 }
