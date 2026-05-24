@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   TILE,
   MAP_W,
@@ -17,6 +17,8 @@ import {
   type DoorInfo,
 } from "./map";
 import { PlayerSprite, type Dir } from "./Sprite";
+import NPCs from "./NPCs";
+import Pickups from "./Pickups";
 
 const STEP_MS = 170; // duration of one tile step
 
@@ -51,6 +53,14 @@ export default function Overworld({
   const stepRef = useRef<null | { from: { x: number; y: number }; to: { x: number; y: number }; start: number }>(null);
   const heldRef = useRef<Dir | null>(heldDir);
   heldRef.current = heldDir;
+  // Short-lived collection floaters. Each carries world coords + an amount;
+  // they fade out via CSS animation and are pruned by a short timer.
+  const [floats, setFloats] = useState<{ id: number; x: number; y: number; amount: number }[]>([]);
+  const onCashCollect = useCallback((amount: number, x: number, y: number) => {
+    const id = Date.now() + Math.random();
+    setFloats((f) => [...f, { id, x, y, amount }]);
+    setTimeout(() => setFloats((f) => f.filter((it) => it.id !== id)), 1200);
+  }, []);
 
   // Drive the step machine with a single rAF loop. Held direction is read
   // from a ref so the loop never re-binds on input changes.
@@ -148,6 +158,12 @@ export default function Overworld({
       >
         <Tiles />
 
+        {/* Money pickups — collected when the player's tile matches. */}
+        <Pickups playerTile={{ x: px, y: py }} onCollect={onCashCollect} />
+
+        {/* Wandering NPCs — purely decorative, don't block the player. */}
+        <NPCs />
+
         {/* Player — rendered above tiles. Pixel position interpolated. */}
         <div
           style={{
@@ -170,7 +186,39 @@ export default function Overworld({
             they're heading. zIndex puts them under the player when they're
             standing in front of the door. */}
         <DoorLabels />
+
+        {/* Collection floaters — fade-up "+$N" indicators at the pickup
+            tile. Lifetimes managed by the parent's setTimeout. */}
+        {floats.map((f) => (
+          <div
+            key={f.id}
+            style={{
+              position: "absolute",
+              left: f.x * TILE - TILE / 2,
+              top: f.y * TILE - 12,
+              width: TILE * 2,
+              textAlign: "center",
+              fontSize: 13,
+              fontWeight: 900,
+              color: "#bbf7d0",
+              textShadow: "0 1px 2px #000",
+              pointerEvents: "none",
+              zIndex: 50,
+              animation: "cashPop 1.2s ease-out forwards",
+            }}
+          >
+            +${f.amount}
+          </div>
+        ))}
       </div>
+
+      <style jsx>{`
+        @keyframes cashPop {
+          0% { opacity: 0; transform: translateY(4px) scale(0.85); }
+          15% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-22px) scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
