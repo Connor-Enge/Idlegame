@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import Player, { type PlayerHandle } from "./Player";
 import Building from "./Building";
+import NPC from "./NPC";
+import { Fence, Lamps, Trees } from "./Decor";
 
 // Every visitable location maps to one of the existing menu routes. Position
 // is (x, z) on the ground plane. Heights / colours / labels just for vibes.
@@ -31,6 +33,27 @@ export const SPOTS: Spot[] = [
 ];
 
 const PROXIMITY = 5.5; // metres at which the "press to enter" prompt triggers
+const PLAYER_RADIUS = 0.55; // capsule radius — used for building collision
+
+// AABB collision: push the player out of any building footprint they
+// stepped into, along whichever axis has the smaller penetration. Works on
+// XZ; y is ignored since the player can't fly.
+function resolveBuildingCollisions(pos: THREE.Vector3) {
+  for (const s of SPOTS) {
+    const halfW = s.size[0] / 2 + PLAYER_RADIUS;
+    const halfD = s.size[2] / 2 + PLAYER_RADIUS;
+    const dx = pos.x - s.position[0];
+    const dz = pos.z - s.position[1];
+    const ax = Math.abs(dx);
+    const az = Math.abs(dz);
+    if (ax < halfW && az < halfD) {
+      const pushX = halfW - ax;
+      const pushZ = halfD - az;
+      if (pushX < pushZ) pos.x += Math.sign(dx || 1) * pushX;
+      else pos.z += Math.sign(dz || 1) * pushZ;
+    }
+  }
+}
 
 // Inside the Canvas — handles per-frame movement + camera follow. Reads the
 // latest joystick vector via the moveRef ref the parent owns.
@@ -62,9 +85,11 @@ function World({
     const speed = 8;
     pos.x += moveRef.current.x * speed * dt;
     pos.z += moveRef.current.y * speed * dt;
+    // Push out of any building we stepped into.
+    resolveBuildingCollisions(pos);
     // Soft world bounds so the avatar can't wander off into the void.
-    pos.x = THREE.MathUtils.clamp(pos.x, -30, 30);
-    pos.z = THREE.MathUtils.clamp(pos.z, -30, 30);
+    pos.x = THREE.MathUtils.clamp(pos.x, -29, 29);
+    pos.z = THREE.MathUtils.clamp(pos.z, -29, 29);
 
     // Camera follow — sits behind-and-above the player, smoothed.
     targetCam.current.set(pos.x, pos.y + 12, pos.z + 16);
@@ -123,6 +148,18 @@ function World({
           highlight={nearestId.current === s.id}
         />
       ))}
+
+      <Fence />
+      <Lamps />
+      <Trees exclusion={SPOTS.map((s) => ({ x: s.position[0], z: s.position[1], r: Math.max(s.size[0], s.size[2]) / 2 }))} />
+
+      {/* A handful of wandering townsfolk so the world isn't empty */}
+      <NPC color="#f87171" start={[10, -3]} speed={2.4} />
+      <NPC color="#60a5fa" start={[-8, 5]} speed={2.0} />
+      <NPC color="#fbbf24" start={[2, -22]} speed={3.0} />
+      <NPC color="#a78bfa" start={[-18, 2]} speed={2.6} />
+      <NPC color="#34d399" start={[18, -14]} speed={2.2} />
+      <NPC color="#f472b6" start={[-3, 22]} speed={2.8} />
 
       <Player ref={playerRef} />
     </>
