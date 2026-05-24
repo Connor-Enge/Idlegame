@@ -351,114 +351,25 @@ function Cell({ x, y }: { x: number; y: number }) {
   const sym = tileAt(x, y);
   const left = x * TILE;
   const top = y * TILE;
+  const v = variant(x, y);
 
-  // Background ground tile — always rendered first so building bottoms have
-  // something behind them.
-  const baseGround = sym === "," ? "#a16207" : sym === "f" ? "#65a30d" : "#3f7d3a";
-
-  // Buildings: render as solid coloured blocks with a roof accent on the
-  // topmost row of the building and small window detailing on mid-tier
-  // walls so each building reads as more than a flat rectangle.
   if (isBuilding(x, y)) {
-    const palette = buildingPaletteAt(x, y)!;
-    const roof = isRoofCell(x, y);
-    const door = doorAt(x, y);
-    const window = !door && !roof && variant(x, y) !== 0; // ~2/3 of mid cells
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left,
-          top,
-          width: TILE,
-          height: TILE,
-          background: door ? palette.door : palette.wall,
-          borderTop: roof ? `5px solid ${palette.roof}` : undefined,
-          boxShadow: door ? "inset 0 0 0 2px rgba(0,0,0,0.4)" : "inset 0 0 0 1px rgba(0,0,0,0.25)",
-          zIndex: 1,
-        }}
-      >
-        {roof && (
-          // Roof shingle pattern — a darker strip beneath the accent line
-          // so the roof reads as thickness rather than a single border.
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              height: 9,
-              background: "rgba(0,0,0,0.25)",
-            }}
-          />
-        )}
-        {window && (
-          <div
-            style={{
-              position: "absolute",
-              left: 8,
-              top: 9,
-              width: TILE - 16,
-              height: 11,
-              background: "#facc15",
-              border: "1.5px solid #1f2937",
-              borderRadius: 2,
-              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.4)",
-            }}
-          >
-            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "#1f2937" }} />
-            <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "#1f2937" }} />
-          </div>
-        )}
-        {door && (
-          <>
-            {/* Awning stripe to make the door pop */}
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: 0,
-                height: 4,
-                background: palette.roof,
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                left: 5,
-                right: 5,
-                top: 7,
-                bottom: 4,
-                borderRadius: "4px 4px 1px 1px",
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-              }}
-            >
-              {door.icon}
-            </div>
-          </>
-        )}
-      </div>
-    );
+    return <BuildingCell x={x} y={y} left={left} top={top} v={v} />;
   }
 
   // Decorative / decorative-blocker tiles drawn on top of grass.
   const decor = (() => {
     switch (sym) {
       case "t":
-        return <Tree v={variant(x, y)} />;
+        return <Tree v={v} />;
       case "F":
         return <Fence />;
       case "w":
-        return <Water />;
+        return <Water v={v} />;
       case "W":
         return <Fountain />;
       case "f":
-        return <Flowers v={variant(x, y)} />;
+        return <Flowers v={v} />;
       case "s":
         return <Sign />;
       default:
@@ -466,61 +377,456 @@ function Cell({ x, y }: { x: number; y: number }) {
     }
   })();
 
+  // Pick the base tile. Path tiles render their own dirt texture; grass
+  // (anything else walkable + the ground beneath decor) gets a grass
+  // background. Water/fence tiles paint their full backdrop themselves so
+  // we don't need a base behind them.
+  const baseEl =
+    sym === "," ? <Path v={v} /> :
+    sym === "w" || sym === "W" || sym === "F" ? null :
+    <Grass v={v} />;
+
   return (
-    <div
-      style={{
-        position: "absolute",
-        left,
-        top,
-        width: TILE,
-        height: TILE,
-        background: baseGround,
-      }}
-    >
-      {/* Subtle ground noise so identical tiles don't look like a tiled image. */}
-      {sym === "." && variant(x, y) === 0 && (
-        <div style={{ position: "absolute", left: 6, top: 10, width: 4, height: 2, background: "rgba(0,0,0,0.18)", borderRadius: 1 }} />
-      )}
-      {sym === "," && (
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(0,0,0,0.04), rgba(0,0,0,0.12))" }} />
-      )}
+    <div style={{ position: "absolute", left, top, width: TILE, height: TILE }}>
+      {baseEl}
       {decor}
     </div>
   );
 }
 
-function Tree({ v }: { v: number }) {
-  const trunk = "#5b3a1d";
-  const leafA = "#15803d";
-  const leafB = "#166534";
-  const leaf = v === 0 ? leafA : v === 1 ? leafB : "#14532d";
+// -- Buildings -----------------------------------------------------------
+
+function BuildingCell({
+  x, y, left, top, v,
+}: { x: number; y: number; left: number; top: number; v: number }) {
+  const palette = buildingPaletteAt(x, y)!;
+  const isRoof = isRoofCell(x, y);
+  const door = doorAt(x, y);
+
+  // Detect surrounding building cells so we can render proper corners,
+  // gables, and "this is the front of the building" details. A door tile
+  // is always the front; the cell above the door becomes the gable; roof
+  // cells in the corners get pointed edges.
+  const isAboveDoor = !!doorAt(x, y + 1);
+  const isWindow = !door && !isRoof && !isAboveDoor && v !== 0;
+
+  // Z-index: roofs above neighbouring grass, doors above roofs (so the
+  // awning isn't clipped), gable above roof.
+  const z = door ? 4 : isAboveDoor ? 3 : isRoof ? 2 : 2;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top, width: TILE, height: TILE,
+        zIndex: z,
+      }}
+    >
+      {isRoof ? (
+        <Roof palette={palette} cornerLeft={!isBuilding(x - 1, y)} cornerRight={!isBuilding(x + 1, y)} />
+      ) : door ? (
+        <Door palette={palette} icon={door.icon} />
+      ) : isAboveDoor ? (
+        <Gable palette={palette} />
+      ) : (
+        <Wall palette={palette} window={isWindow} />
+      )}
+    </div>
+  );
+}
+
+function Roof({ palette, cornerLeft, cornerRight }: { palette: BuildingPaletteLite; cornerLeft: boolean; cornerRight: boolean }) {
+  // Sloped roof drawn with a darker top half (shadow side) and lighter
+  // bottom (sun side), plus horizontal shingle lines. Corner cells round
+  // outward to suggest a pitched roof end.
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0,
+        background: `linear-gradient(180deg, ${palette.roof} 0%, ${palette.roof} 50%, ${shade(palette.roof, -15)} 50%, ${shade(palette.roof, -25)} 100%)`,
+        borderRadius: `${cornerLeft ? "6px" : "0"} ${cornerRight ? "6px" : "0"} 0 0`,
+        boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.4), 0 2px 0 rgba(0,0,0,0.25)",
+      }}
+    >
+      {/* Shingle row dividers */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 9, height: 1, background: "rgba(0,0,0,0.3)" }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: 19, height: 1, background: "rgba(0,0,0,0.3)" }} />
+      {/* Shingle staggered ticks */}
+      <div style={{ position: "absolute", left: 8, top: 4, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
+      <div style={{ position: "absolute", left: 24, top: 4, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
+      <div style={{ position: "absolute", left: 16, top: 14, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
+    </div>
+  );
+}
+
+function Wall({ palette, window }: { palette: BuildingPaletteLite; window: boolean }) {
+  // Stucco wall with a faint brick pattern via repeating gradient + a
+  // soft inner shadow for depth. Optional window cluster.
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0,
+        background: `linear-gradient(180deg, ${shade(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -2px 0 rgba(0,0,0,0.25)",
+      }}
+    >
+      {/* Brick courses — faint horizontal lines + offset half-brick marks */}
+      <BrickPattern />
+      {window && <Window palette={palette} />}
+    </div>
+  );
+}
+
+function BrickPattern() {
+  // Pure-CSS brick: horizontal lines every 5px, offset half-brick lines
+  // alternating per row. Subtle so it doesn't compete with the windows.
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        backgroundImage:
+          "linear-gradient(0deg, rgba(0,0,0,0.18) 1px, transparent 1px), " +
+          "linear-gradient(90deg, rgba(0,0,0,0.18) 1px, transparent 1px)",
+        backgroundSize: "11px 6px",
+        backgroundPosition: "0 0, 0 0",
+        opacity: 0.5,
+      }}
+    />
+  );
+}
+
+function Window({ palette }: { palette: BuildingPaletteLite }) {
+  // Framed window with sill, shutters, and a warm glow inside. The glow
+  // stays consistent at all hours; day/night tint reads it as cooler at
+  // night which sells the "lit window" feel.
   return (
     <>
-      <div style={{ position: "absolute", left: 13, top: 18, width: 6, height: 10, background: trunk }} />
-      <div style={{ position: "absolute", left: 2, top: 0, width: 28, height: 22, background: leaf, borderRadius: "50%", boxShadow: "inset -3px -3px 0 rgba(0,0,0,0.25)" }} />
+      {/* Sill */}
+      <div style={{ position: "absolute", left: 4, top: 21, right: 4, height: 2, background: shade(palette.wall, -30), boxShadow: "0 1px 0 rgba(0,0,0,0.4)" }} />
+      {/* Window frame */}
+      <div
+        style={{
+          position: "absolute", left: 6, top: 7, width: TILE - 12, height: 14,
+          background: "linear-gradient(180deg, #fde68a 0%, #fcd34d 100%)",
+          border: "1.5px solid #1f2937",
+          borderRadius: 1,
+          boxShadow: "inset 0 0 4px rgba(254,243,199,0.8), 0 0 3px rgba(252,211,77,0.7)",
+        }}
+      >
+        {/* Mullion cross */}
+        <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: "#1f2937" }} />
+        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, marginTop: -0.5, background: "#1f2937" }} />
+      </div>
+      {/* Shutters */}
+      <div style={{ position: "absolute", left: 2, top: 7, width: 3, height: 14, background: shade(palette.roof, -20), borderRadius: 1, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.3)" }} />
+      <div style={{ position: "absolute", right: 2, top: 7, width: 3, height: 14, background: shade(palette.roof, -20), borderRadius: 1, boxShadow: "inset 1px 0 0 rgba(0,0,0,0.3)" }} />
     </>
+  );
+}
+
+function Gable({ palette }: { palette: BuildingPaletteLite }) {
+  // The cell directly above the door. Acts as the building's "facade
+  // detail" tile — gets a wood-trim, a hanging sign placeholder and the
+  // brick wall behind it.
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <Wall palette={palette} window={false} />
+      {/* Roof trim strip */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3, background: palette.roof, boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.4)" }} />
+      {/* Hanging sign */}
+      <div style={{ position: "absolute", left: "50%", top: 6, marginLeft: -8, width: 16, height: 12, background: "linear-gradient(180deg, #d4a574, #a8895a)", border: "1.5px solid #5b3a1d", borderRadius: 1, boxShadow: "0 2px 2px rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "absolute", left: 1, top: 1, right: 1, bottom: 1, background: shade(palette.roof, 0), borderRadius: 1 }} />
+      </div>
+      {/* Sign chains */}
+      <div style={{ position: "absolute", left: "50%", top: 3, marginLeft: -7, width: 1, height: 4, background: "#1f2937" }} />
+      <div style={{ position: "absolute", left: "50%", top: 3, marginLeft: 6, width: 1, height: 4, background: "#1f2937" }} />
+    </div>
+  );
+}
+
+function Door({ palette, icon }: { palette: BuildingPaletteLite; icon: string }) {
+  // The door tile is the player's interaction target. It needs to stand
+  // out from afar — bright awning above, dark wooden door with panels,
+  // welcome mat on the path below.
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0,
+        background: `linear-gradient(180deg, ${shade(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
+        boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.3)",
+      }}
+    >
+      {/* Awning — striped fabric overhang */}
+      <div
+        style={{
+          position: "absolute", left: 1, right: 1, top: 0, height: 6,
+          background: `repeating-linear-gradient(90deg, ${palette.roof} 0 4px, ${shade(palette.roof, 15)} 4px 8px)`,
+          borderBottom: "1.5px solid #1f2937",
+          boxShadow: "0 2px 2px rgba(0,0,0,0.3)",
+        }}
+      />
+      {/* Doorway frame */}
+      <div
+        style={{
+          position: "absolute", left: 6, top: 8, width: TILE - 12, height: 22,
+          background: "#2a1810",
+          border: "1.5px solid #1f2937",
+          borderRadius: "6px 6px 0 0",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)",
+        }}
+      >
+        {/* Door panel — wood grain effect with two panels */}
+        <div style={{ position: "absolute", left: 2, top: 2, right: 2, bottom: 0, background: "linear-gradient(180deg, #5b3a1d 0%, #4a2f1a 100%)", borderRadius: "5px 5px 0 0" }}>
+          <div style={{ position: "absolute", left: 2, top: 2, right: 2, height: 7, border: "1px solid #2a1810", borderRadius: 1, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
+          <div style={{ position: "absolute", left: 2, top: 11, right: 2, height: 7, border: "1px solid #2a1810", borderRadius: 1, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
+        </div>
+        {/* Knob */}
+        <div style={{ position: "absolute", right: 4, top: 11, width: 2, height: 2, background: "#fbbf24", borderRadius: "50%", boxShadow: "0 0 1px #d97706" }} />
+      </div>
+      {/* Building icon over the door */}
+      <div
+        style={{
+          position: "absolute", left: "50%", top: 9, marginLeft: -7, width: 14, height: 7,
+          background: shade(palette.roof, 0), border: "1px solid rgba(0,0,0,0.4)", borderRadius: 1,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 7, lineHeight: "7px",
+        }}
+      >
+        {icon}
+      </div>
+    </div>
+  );
+}
+
+// Lite alias matching the part of the palette we use inside Cells.
+type BuildingPaletteLite = { wall: string; roof: string; door: string };
+
+// Lighten / darken a hex colour by `pct` percent (-100..100). Used so every
+// tile can derive shading from its building palette without us having to
+// store separate "wall-lit" + "wall-shadow" colours in PALETTES.
+function shade(hex: string, pct: number): string {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  const f = pct / 100;
+  const adj = (n: number) => Math.max(0, Math.min(255, Math.round(n + (f > 0 ? (255 - n) * f : n * f))));
+  return `rgb(${adj(r)}, ${adj(g)}, ${adj(b)})`;
+}
+
+// -- Tile backgrounds ----------------------------------------------------
+
+function Grass({ v }: { v: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background:
+          "radial-gradient(circle at 30% 40%, #6ec265 0%, #4f9c47 70%), #4a9242",
+      }}
+    >
+      {/* Grass tufts — short dark blades scattered in a deterministic pattern.
+          Three variants so neighbouring tiles look different. */}
+      {v === 0 && (
+        <>
+          <Tuft x={6} y={20} h={5} />
+          <Tuft x={20} y={8} h={4} />
+          <Tuft x={14} y={26} h={6} />
+        </>
+      )}
+      {v === 1 && (
+        <>
+          <Tuft x={4} y={6} h={4} />
+          <Tuft x={22} y={22} h={5} />
+          <Pebble x={16} y={14} />
+        </>
+      )}
+      {v === 2 && (
+        <>
+          <Tuft x={10} y={4} h={4} />
+          <Tuft x={2} y={24} h={5} />
+          <Tuft x={26} y={18} h={4} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function Tuft({ x, y, h }: { x: number; y: number; h: number }) {
+  return (
+    <>
+      <div style={{ position: "absolute", left: x, top: y, width: 1, height: h, background: "#2f6b30", borderRadius: 1 }} />
+      <div style={{ position: "absolute", left: x + 2, top: y - 1, width: 1, height: h + 1, background: "#2f6b30", borderRadius: 1 }} />
+      <div style={{ position: "absolute", left: x + 4, top: y, width: 1, height: h, background: "#2f6b30", borderRadius: 1 }} />
+    </>
+  );
+}
+
+function Pebble({ x, y }: { x: number; y: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute", left: x, top: y, width: 4, height: 3,
+        background: "#9ca3af", borderRadius: "50%",
+        boxShadow: "inset -1px -1px 0 rgba(0,0,0,0.3), 0 1px 0 rgba(0,0,0,0.2)",
+      }}
+    />
+  );
+}
+
+function Path({ v }: { v: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background:
+          "linear-gradient(180deg, #cba37a 0%, #b58b5e 100%)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.18)",
+      }}
+    >
+      {/* Cobblestone-ish speckles. Different placement per variant so the
+          path doesn't look uniformly tiled. */}
+      {v === 0 && (
+        <>
+          <Speckle x={6} y={8} c="#8c6435" />
+          <Speckle x={20} y={14} c="#8c6435" />
+          <Speckle x={12} y={22} c="#7a572d" />
+          <Speckle x={26} y={4} c="#7a572d" />
+        </>
+      )}
+      {v === 1 && (
+        <>
+          <Speckle x={4} y={20} c="#8c6435" />
+          <Speckle x={22} y={6} c="#7a572d" />
+          <Speckle x={14} y={14} c="#7a572d" />
+        </>
+      )}
+      {v === 2 && (
+        <>
+          <Speckle x={8} y={4} c="#8c6435" />
+          <Speckle x={24} y={22} c="#7a572d" />
+          <Speckle x={2} y={12} c="#8c6435" />
+          <Speckle x={18} y={26} c="#7a572d" />
+        </>
+      )}
+    </div>
+  );
+}
+
+function Speckle({ x, y, c }: { x: number; y: number; c: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute", left: x, top: y, width: 3, height: 2,
+        background: c, borderRadius: "50%",
+      }}
+    />
+  );
+}
+
+function Tree({ v }: { v: number }) {
+  // Three-tone canopy: dark base, mid body, light highlight. The light
+  // disc sits on the upper-left to suggest a sun-lit dome.
+  const palette = v === 0
+    ? { d: "#1b5e20", m: "#2e7d32", l: "#4caf50" }
+    : v === 1
+    ? { d: "#1a4d2e", m: "#2a6b3f", l: "#3f9c55" }
+    : { d: "#0f3f1f", m: "#1f5530", l: "#36844a" };
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {/* Shadow on grass */}
+      <div style={{ position: "absolute", left: 6, top: 24, width: 20, height: 5, background: "rgba(0,0,0,0.35)", borderRadius: "50%", filter: "blur(1px)" }} />
+      {/* Trunk */}
+      <div style={{ position: "absolute", left: 13, top: 20, width: 6, height: 8, background: "#6b4423", borderRadius: "1px", boxShadow: "inset -1px 0 0 #4a2f1a" }} />
+      {/* Canopy — three stacked discs for depth */}
+      <div style={{ position: "absolute", left: 1, top: 4, width: 30, height: 22, background: palette.d, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 3, top: 2, width: 26, height: 20, background: palette.m, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 6, top: 3, width: 14, height: 10, background: palette.l, borderRadius: "50%" }} />
+      {/* Hint of leaves at bottom edge */}
+      <div style={{ position: "absolute", left: 4, top: 18, width: 4, height: 3, background: palette.m, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 24, top: 17, width: 4, height: 3, background: palette.m, borderRadius: "50%" }} />
+    </div>
   );
 }
 
 function Fence() {
+  // Wood-plank fence. Grass behind, then two horizontal rails plus three
+  // upright posts so the lattice reads even at this small size.
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <Grass v={0} />
+      {/* Horizontal rails */}
+      <div style={{ position: "absolute", left: 0, top: 9, width: TILE, height: 4, background: "linear-gradient(180deg, #b8895a 0%, #8c6435 100%)", boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.3)" }} />
+      <div style={{ position: "absolute", left: 0, top: 20, width: TILE, height: 4, background: "linear-gradient(180deg, #b8895a 0%, #8c6435 100%)", boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.3)" }} />
+      {/* Posts — pointed tops */}
+      <Post x={4} />
+      <Post x={14} />
+      <Post x={24} />
+    </div>
+  );
+}
+
+function Post({ x }: { x: number }) {
   return (
     <>
-      <div style={{ position: "absolute", inset: 0, background: "#3f7d3a" }} />
-      <div style={{ position: "absolute", left: 0, top: 8, width: TILE, height: 4, background: "#a8895a" }} />
-      <div style={{ position: "absolute", left: 0, top: 20, width: TILE, height: 4, background: "#a8895a" }} />
-      <div style={{ position: "absolute", left: 6, top: 2, width: 4, height: TILE - 4, background: "#7a5b30" }} />
-      <div style={{ position: "absolute", left: TILE - 10, top: 2, width: 4, height: TILE - 4, background: "#7a5b30" }} />
+      <div style={{ position: "absolute", left: x, top: 4, width: 4, height: 24, background: "linear-gradient(90deg, #5b3a1d 0%, #7a5b30 50%, #5b3a1d 100%)" }} />
+      <div style={{ position: "absolute", left: x, top: 4, width: 4, height: 2, background: "#5b3a1d", clipPath: "polygon(0 100%, 50% 0, 100% 100%)" }} />
     </>
   );
 }
 
-function Water() {
+function Water({ v }: { v: number }) {
   return (
-    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }}>
-      {/* Subtle ripple highlight */}
-      <div style={{ position: "absolute", left: 4, top: 6, width: 10, height: 2, background: "rgba(255,255,255,0.35)", borderRadius: 2 }} />
-      <div style={{ position: "absolute", left: 14, top: 18, width: 8, height: 2, background: "rgba(255,255,255,0.25)", borderRadius: 2 }} />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background:
+          "linear-gradient(180deg, #4ea0e8 0%, #2563eb 60%, #1e40af 100%)",
+        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.3), inset 1px 1px 0 rgba(255,255,255,0.15)",
+      }}
+    >
+      {/* Ripples — animated horizontal highlights. Three variants offset the
+          pattern so a 2×2 pond doesn't look like a tiled repeat. */}
+      {v === 0 && (
+        <>
+          <Ripple x={4} y={8} w={10} />
+          <Ripple x={16} y={20} w={8} delay={0.5} />
+        </>
+      )}
+      {v === 1 && (
+        <>
+          <Ripple x={8} y={14} w={12} delay={0.3} />
+          <Ripple x={2} y={22} w={6} />
+        </>
+      )}
+      {v === 2 && (
+        <>
+          <Ripple x={14} y={6} w={8} delay={0.7} />
+          <Ripple x={6} y={18} w={10} delay={0.2} />
+        </>
+      )}
+      <style jsx>{`
+        @keyframes rippleSlide {
+          0%, 100% { transform: translateX(0); opacity: 0.6; }
+          50% { transform: translateX(3px); opacity: 1; }
+        }
+      `}</style>
     </div>
+  );
+}
+
+function Ripple({ x, y, w, delay = 0 }: { x: number; y: number; w: number; delay?: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute", left: x, top: y, width: w, height: 1,
+        background: "rgba(255,255,255,0.7)", borderRadius: 1,
+        animation: `rippleSlide 2.4s ease-in-out ${delay}s infinite`,
+      }}
+    />
   );
 }
 
@@ -547,22 +853,70 @@ function Fountain() {
 }
 
 function Flowers({ v }: { v: number }) {
-  const col = v === 0 ? "#f43f5e" : v === 1 ? "#fbbf24" : "#a855f7";
+  // 5-petal flowers in three colour-mix palettes. Each tile has a tight
+  // cluster of 3 blooms with a yellow centre and stems trailing down.
+  const palette = v === 0
+    ? ["#ef4444", "#ec4899", "#fb923c"]
+    : v === 1
+    ? ["#fbbf24", "#facc15", "#fde047"]
+    : ["#a855f7", "#c084fc", "#60a5fa"];
+  const positions = [
+    { x: 6, y: 6, c: palette[0] },
+    { x: 18, y: 10, c: palette[1] },
+    { x: 11, y: 20, c: palette[2] },
+  ];
   return (
     <>
-      <div style={{ position: "absolute", left: 7, top: 8, width: 5, height: 5, background: col, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 18, top: 14, width: 5, height: 5, background: col, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 12, top: 22, width: 5, height: 5, background: col, borderRadius: "50%" }} />
+      {positions.map((p, i) => (
+        <Bloom key={i} x={p.x} y={p.y} color={p.c} />
+      ))}
     </>
   );
 }
 
-function Sign() {
+function Bloom({ x, y, color }: { x: number; y: number; color: string }) {
+  // 5-petal flower drawn as 4 outer petals + center disc.
   return (
-    <>
-      <div style={{ position: "absolute", left: 14, top: 14, width: 4, height: 14, background: "#5b3a1d" }} />
-      <div style={{ position: "absolute", left: 6, top: 4, width: 20, height: 12, background: "#a8895a", border: "1px solid #5b3a1d", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>📜</div>
-    </>
+    <div style={{ position: "absolute", left: x, top: y, width: 8, height: 8 }}>
+      {/* Stem */}
+      <div style={{ position: "absolute", left: 3, top: 6, width: 1, height: 4, background: "#2f6b30" }} />
+      {/* Petals */}
+      <div style={{ position: "absolute", left: 2, top: 0, width: 3, height: 3, background: color, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 0, top: 2, width: 3, height: 3, background: color, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 4, top: 2, width: 3, height: 3, background: color, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 1, top: 4, width: 3, height: 3, background: color, borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 3, top: 4, width: 3, height: 3, background: color, borderRadius: "50%" }} />
+      {/* Center */}
+      <div style={{ position: "absolute", left: 2, top: 2, width: 3, height: 3, background: "#fef3c7", borderRadius: "50%" }} />
+    </div>
+  );
+}
+
+function Sign() {
+  // Wooden plaque on a post with text-line scratches and shading.
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <Grass v={2} />
+      {/* Post */}
+      <div style={{ position: "absolute", left: 14, top: 16, width: 4, height: 14, background: "linear-gradient(90deg, #5b3a1d, #7a5b30, #5b3a1d)" }} />
+      {/* Plaque */}
+      <div
+        style={{
+          position: "absolute", left: 4, top: 4, width: 24, height: 14,
+          background: "linear-gradient(180deg, #d4a574, #a8895a)",
+          border: "1.5px solid #5b3a1d", borderRadius: 2,
+          boxShadow: "0 2px 0 rgba(0,0,0,0.3)",
+        }}
+      >
+        {/* Text scratches */}
+        <div style={{ position: "absolute", left: 3, top: 3, width: 18, height: 1, background: "#5b3a1d" }} />
+        <div style={{ position: "absolute", left: 3, top: 6, width: 14, height: 1, background: "#5b3a1d" }} />
+        <div style={{ position: "absolute", left: 3, top: 9, width: 16, height: 1, background: "#5b3a1d" }} />
+      </div>
+      {/* Nail heads */}
+      <div style={{ position: "absolute", left: 6, top: 5, width: 2, height: 2, background: "#4a2f1a", borderRadius: "50%" }} />
+      <div style={{ position: "absolute", left: 24, top: 5, width: 2, height: 2, background: "#4a2f1a", borderRadius: "50%" }} />
+    </div>
   );
 }
 

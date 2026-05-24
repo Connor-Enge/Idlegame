@@ -127,37 +127,78 @@ export default function Pickups({
             width: TILE,
             height: TILE,
             zIndex: p.y + 1,
-            animation: "billBob 1.2s ease-in-out infinite",
+            animation: "billBob 1.4s ease-in-out infinite",
             pointerEvents: "none",
           }}
         >
+          {/* Shadow that grows/shrinks with the bob so the bill feels grounded */}
           <div
             style={{
               position: "absolute",
-              left: 6,
-              top: 10,
-              width: TILE - 12,
-              height: 12,
-              background: "#16a34a",
-              border: "1.5px solid #052e16",
+              left: 8,
+              top: TILE - 5,
+              width: TILE - 16,
+              height: 3,
+              background: "rgba(0,0,0,0.4)",
+              borderRadius: "50%",
+              filter: "blur(1px)",
+              animation: "billShadow 1.4s ease-in-out infinite",
+            }}
+          />
+          {/* Dollar bill — stylized with border, denomination corners, and a portrait oval */}
+          <div
+            style={{
+              position: "absolute",
+              left: 4,
+              top: 9,
+              width: TILE - 8,
+              height: 14,
+              background:
+                "linear-gradient(180deg, #4ade80 0%, #16a34a 100%)",
+              border: "1.5px solid #14532d",
               borderRadius: 2,
-              fontSize: 8,
-              fontWeight: 900,
-              color: "#dcfce7",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+              boxShadow:
+                "inset 0 0 0 1px rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.5)",
+              transform: "rotate(-6deg)",
             }}
           >
-            $
+            {/* Inner border */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 2,
+                border: "1px dashed rgba(255,255,255,0.45)",
+                borderRadius: 1,
+              }}
+            />
+            {/* Portrait oval */}
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: 3,
+                marginLeft: -3,
+                width: 6,
+                height: 6,
+                background: "#bbf7d0",
+                border: "1px solid #14532d",
+                borderRadius: "50%",
+              }}
+            />
+            {/* $ in corners */}
+            <div style={{ position: "absolute", left: 1, top: 0, fontSize: 6, fontWeight: 900, color: "#dcfce7", lineHeight: "8px" }}>$</div>
+            <div style={{ position: "absolute", right: 1, bottom: 0, fontSize: 6, fontWeight: 900, color: "#dcfce7", lineHeight: "8px" }}>$</div>
           </div>
         </div>
       ))}
       <style jsx>{`
         @keyframes billBob {
           0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-3px); }
+          50% { transform: translateY(-4px); }
+        }
+        @keyframes billShadow {
+          0%, 100% { transform: scaleX(1); opacity: 0.4; }
+          50% { transform: scaleX(0.7); opacity: 0.2; }
         }
       `}</style>
     </>

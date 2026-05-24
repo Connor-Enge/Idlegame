@@ -79,20 +79,90 @@ export default function Dialog({
   return (
     <button
       onClick={advance}
-      className="fixed bottom-20 left-1/2 z-40 w-[min(440px,calc(100vw-32px))] -translate-x-1/2 select-none rounded-xl border-4 border-white bg-slate-900 px-4 py-3 text-left text-white shadow-2xl"
+      className="fixed bottom-20 left-1/2 z-40 w-[min(460px,calc(100vw-32px))] -translate-x-1/2 select-none text-left"
       style={{ touchAction: "manipulation" }}
     >
-      {current.who && (
-        <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-300">{current.who}</div>
-      )}
-      <div className="min-h-[3.2em] text-sm leading-snug">
-        {current.text.slice(0, shown)}
-        {!done && <span className="inline-block w-1.5 animate-pulse">▍</span>}
+      {/* Outer dark frame */}
+      <div
+        style={{
+          background: "#1f2937",
+          padding: 4,
+          borderRadius: 10,
+          boxShadow:
+            "0 8px 16px rgba(0,0,0,0.55), inset 0 0 0 2px #0f172a, 0 0 0 3px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Inner white border */}
+        <div
+          style={{
+            background: "#f8fafc",
+            padding: 3,
+            borderRadius: 7,
+            boxShadow: "inset 0 0 0 2px #475569",
+          }}
+        >
+          {/* Content panel */}
+          <div
+            style={{
+              background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+              borderRadius: 5,
+              padding: "10px 14px",
+              color: "#f8fafc",
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            }}
+          >
+            {current.who && (
+              <div style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    background: "#fbbf24",
+                    color: "#451a03",
+                    fontSize: 9,
+                    fontWeight: 900,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {current.who}
+                </span>
+              </div>
+            )}
+            <div style={{ minHeight: "3.2em", fontSize: 13, lineHeight: 1.45, letterSpacing: "0.01em" }}>
+              {current.text.slice(0, shown)}
+              {!done && <span style={{ opacity: 0.7 }}>▍</span>}
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: 10,
+                color: "rgba(248,250,252,0.55)",
+              }}
+            >
+              <span>{done ? `Tap to ${hasMore ? "continue" : "close"}` : "Tap to skip"}</span>
+              <span
+                style={{
+                  color: "#fbbf24",
+                  opacity: done ? 1 : 0,
+                  animation: done ? "dialogBlink 0.9s ease-in-out infinite" : undefined,
+                }}
+              >
+                ▼
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="mt-2 flex items-center justify-between text-[10px] text-white/60">
-        <span>Tap to {done ? (hasMore ? "continue" : "close") : "skip"}</span>
-        <span className={done ? "animate-bounce" : "opacity-0"}>▼</span>
-      </div>
+      <style jsx>{`
+        @keyframes dialogBlink {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(3px); }
+        }
+      `}</style>
     </button>
   );
 }

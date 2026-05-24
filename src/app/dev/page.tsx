@@ -35,21 +35,22 @@ export default function TownPage() {
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
-      {/* Top HUD — cash + net worth + legacy. Mirrors the StatBar that we
-          hide for /dev, so the player still sees their core stats. */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-black/40 px-3 py-2 text-white">
-        <div>
-          <div className="text-[9px] uppercase tracking-widest text-white/60">Cash</div>
-          <div className="text-base font-extrabold text-accent-2">{money(state?.stats.cash ?? 0)}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-[9px] uppercase tracking-widest text-white/60">Net worth</div>
-          <div className="text-sm font-semibold">{money(state?.stats.netWorth ?? 0)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-[9px] uppercase tracking-widest text-white/60">Legacy</div>
-          <div className="text-sm font-semibold">✨ {state?.progression.legacyPoints ?? 0}</div>
-        </div>
+      {/* Top HUD — three pillared stat readouts on a stylised game banner.
+          Mirrors the StatBar that we hide for /dev so the player still
+          sees their core stats. */}
+      <div
+        className="flex items-center justify-between gap-2 px-3 py-2 text-white"
+        style={{
+          background:
+            "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+          borderBottom: "3px solid #0b1220",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 4px rgba(0,0,0,0.4)",
+        }}
+      >
+        <StatPill label="Cash" value={money(state?.stats.cash ?? 0)} accent="#34d399" icon="💵" />
+        <StatPill label="Net worth" value={money(state?.stats.netWorth ?? 0)} accent="#fbbf24" icon="📈" />
+        <StatPill label="Legacy" value={`${state?.progression.legacyPoints ?? 0}`} accent="#a78bfa" icon="✨" />
       </div>
 
       {/* Overworld viewport — fixed-size, centered. The viewport is smaller
@@ -63,33 +64,56 @@ export default function TownPage() {
         />
       </div>
 
-      {/* Bottom row: menu link + quest tracker. */}
-      <div className="border-t border-white/10 bg-black/40 px-3 py-2 text-white">
+      {/* Bottom quest tracker bar — game-banner style with the menu link
+          on the right. */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 text-white"
+        style={{
+          background:
+            "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
+          borderTop: "3px solid #0b1220",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.08), 0 -2px 4px rgba(0,0,0,0.3)",
+        }}
+      >
         {quest ? (
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <div className="flex-1 truncate">
-              <span className="text-amber-300">Quest {quest.idx + 1}/10</span>
-              <span className="mx-1.5 text-white/40">·</span>
-              <span className="font-semibold">{quest.step.icon} {quest.step.hint}</span>
+          <>
+            <div
+              style={{
+                background: "linear-gradient(180deg, #fbbf24 0%, #d97706 100%)",
+                color: "#451a03",
+                fontSize: 9,
+                fontWeight: 900,
+                padding: "3px 7px",
+                borderRadius: 5,
+                border: "1.5px solid #92400e",
+                boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.3), 0 1px 0 rgba(0,0,0,0.4)",
+                flexShrink: 0,
+                letterSpacing: "0.05em",
+              }}
+            >
+              QUEST {quest.idx + 1}/10
             </div>
-            <Link
-              href="/"
-              className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold active:brightness-90"
-            >
-              ☰ Menu
-            </Link>
-          </div>
+            <div className="min-w-0 flex-1 truncate text-xs font-semibold">
+              {quest.step.icon} {quest.step.hint}
+            </div>
+          </>
         ) : (
-          <div className="flex items-center justify-between text-xs text-white/60">
-            <span>🗺️ Explore the town · walk into a door</span>
-            <Link
-              href="/"
-              className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white active:brightness-90"
-            >
-              ☰ Menu
-            </Link>
-          </div>
+          <div className="flex-1 text-xs text-white/60">🗺️ Explore the town · walk into a door</div>
         )}
+        <Link
+          href="/"
+          className="flex-shrink-0 select-none text-[11px] font-bold text-white active:brightness-90"
+          style={{
+            background: "linear-gradient(180deg, #475569 0%, #1e293b 100%)",
+            border: "1.5px solid #0b1220",
+            borderRadius: 5,
+            padding: "4px 8px",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 0 rgba(0,0,0,0.4)",
+          }}
+        >
+          ☰ Menu
+        </Link>
       </div>
 
       {/* On-screen D-pad — sits over the bottom-left of the screen. */}
@@ -113,6 +137,7 @@ export default function TownPage() {
 
       {/* Building modal — sits above everything. Open while a door is set. */}
       {activeDoor && <BuildingModal door={activeDoor} onClose={() => setActiveDoor(null)} />}
+      {/* End of main column */}
 
       {/* Dialog box — sign + NPC text. Lives in front of the world but
           beneath the building modal so entering a building cleanly hides it. */}
@@ -124,4 +149,57 @@ export default function TownPage() {
       )}
     </div>
   );
+}
+
+function StatPill({ label, value, accent, icon }: { label: string; value: string; accent: string; icon: string }) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(15,23,42,0.6) 0%, rgba(2,6,23,0.6) 100%)",
+        border: "1.5px solid #0b1220",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.4)",
+      }}
+    >
+      <div
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 7,
+          background: `radial-gradient(circle at 35% 35%, ${accent}, ${shadeHex(accent, -40)})`,
+          border: "1.5px solid rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 14,
+          boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.45)",
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[9px] font-bold uppercase tracking-widest text-white/55">{label}</div>
+        <div
+          className="truncate text-sm font-extrabold leading-tight"
+          style={{ color: accent, textShadow: "0 1px 0 rgba(0,0,0,0.6)" }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function shadeHex(hex: string, pct: number): string {
+  const c = hex.replace("#", "");
+  if (c.length < 6) return hex;
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  const f = pct / 100;
+  const adj = (n: number) => Math.max(0, Math.min(255, Math.round(n + (f > 0 ? (255 - n) * f : n * f))));
+  return `rgb(${adj(r)}, ${adj(g)}, ${adj(b)})`;
 }
