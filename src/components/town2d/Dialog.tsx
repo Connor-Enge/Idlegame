@@ -4,7 +4,7 @@
 // own typewriter effect — text reveals one char at a time, tapping skips to
 // the end / advances to the next line. Closes when no more lines remain.
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 export interface DialogLine {
   text: string;
@@ -14,7 +14,7 @@ export interface DialogLine {
 
 const CHARS_PER_SEC = 60;
 
-export default function Dialog({
+function DialogImpl({
   lines,
   onClose,
 }: {
@@ -24,16 +24,25 @@ export default function Dialog({
   const [idx, setIdx] = useState(0);
   const [shown, setShown] = useState(0); // chars revealed in the current line
 
+  // Read lines through a ref so the typewriter effect doesn't restart when
+  // the parent re-renders and passes a freshly-mapped (referentially new)
+  // lines array. The typewriter only needs to restart when the line *index*
+  // changes — the text content for a given index is stable per dialog open.
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+
   const current = lines[idx];
 
-  // Typewriter for the current line.
+  // Typewriter for the current line. Depends on idx + the actual text
+  // string (which compares by value), NOT on the line object identity.
+  const currentText = current?.text ?? "";
   useEffect(() => {
+    if (!currentText) return;
     setShown(0);
-    if (!current) return;
     const tick = 1000 / CHARS_PER_SEC;
     const t = setInterval(() => {
       setShown((s) => {
-        if (!current || s >= current.text.length) {
+        if (s >= currentText.length) {
           clearInterval(t);
           return s;
         }
@@ -41,35 +50,36 @@ export default function Dialog({
       });
     }, tick);
     return () => clearInterval(t);
-  }, [idx, current]);
+  }, [idx, currentText]);
 
-  function advance() {
-    if (!current) return;
-    if (shown < current.text.length) {
-      // Skip the typewriter on this line.
-      setShown(current.text.length);
+  // Use a ref for the latest advance() handler so the keyboard listener
+  // doesn't rebind on every render.
+  const advanceRef = useRef<() => void>(() => {});
+  advanceRef.current = function advance() {
+    const cur = linesRef.current[idx];
+    if (!cur) return;
+    if (shown < cur.text.length) {
+      setShown(cur.text.length);
       return;
     }
-    if (idx + 1 < lines.length) {
+    if (idx + 1 < linesRef.current.length) {
       setIdx(idx + 1);
     } else {
       onClose();
     }
-  }
+  };
 
-  // Spacebar / Enter advances the dialog on desktop.
+  // Spacebar / Enter advances the dialog on desktop. Bound exactly once.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "Enter" || e.key === "Escape") {
-        e.preventDefault();
-        if (e.key === "Escape") onClose();
-        else advance();
-      }
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); advanceRef.current(); }
+      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, shown, current]);
+  }, [onClose]);
+
+  function advance() { advanceRef.current(); }
 
   if (!current) return null;
 
@@ -166,3 +176,9 @@ export default function Dialog({
     </button>
   );
 }
+
+// Memoised so a parent re-render that hands back the same lines + onClose
+// (which the dev page now does via useMemo / useCallback) doesn't reset
+// the typewriter state.
+const Dialog = memo(DialogImpl);
+export default Dialog;

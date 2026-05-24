@@ -6,7 +6,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useGame, gameActions } from "@/lib/store";
 import { money } from "@/lib/format";
 import { canRetire, legacyGain } from "@/lib/game/progression";
@@ -28,6 +28,18 @@ export default function TownPage() {
   const [heldDir, setHeldDir] = useState<Dir | null>(null);
   const [activeDoor, setActiveDoor] = useState<DoorInfo | null>(null);
   const [dialog, setDialog] = useState<DialogPayload | null>(null);
+
+  // Stable references so children memoise effectively — without these, the
+  // dialog typewriter restarts on every parent re-render (cash collect,
+  // step end, etc.) because lines+onClose are fresh each render.
+  const dialogLines = useMemo(
+    () => (dialog ? dialog.lines.map((text) => ({ text, who: dialog.who })) : null),
+    [dialog],
+  );
+  const closeDialog = useCallback(() => setDialog(null), []);
+  const closeBuilding = useCallback(() => setActiveDoor(null), []);
+  const handleDialog = useCallback((p: DialogPayload) => setDialog(p), []);
+  const handleEnterDoor = useCallback((d: DoorInfo) => setActiveDoor(d), []);
 
   const quest = currentQuest(state);
   const retirable = state ? canRetire(state) : false;
@@ -58,8 +70,8 @@ export default function TownPage() {
       <div className="flex flex-1 items-center justify-center overflow-hidden">
         <Overworld
           heldDir={heldDir}
-          onEnterDoor={setActiveDoor}
-          onDialog={setDialog}
+          onEnterDoor={handleEnterDoor}
+          onDialog={handleDialog}
           questTarget={quest?.step.target ?? null}
         />
       </div>
@@ -136,16 +148,12 @@ export default function TownPage() {
       )}
 
       {/* Building modal — sits above everything. Open while a door is set. */}
-      {activeDoor && <BuildingModal door={activeDoor} onClose={() => setActiveDoor(null)} />}
-      {/* End of main column */}
+      {activeDoor && <BuildingModal door={activeDoor} onClose={closeBuilding} />}
 
       {/* Dialog box — sign + NPC text. Lives in front of the world but
           beneath the building modal so entering a building cleanly hides it. */}
-      {dialog && (
-        <Dialog
-          lines={dialog.lines.map((text) => ({ text, who: dialog.who }))}
-          onClose={() => setDialog(null)}
-        />
+      {dialog && dialogLines && (
+        <Dialog lines={dialogLines} onClose={closeDialog} />
       )}
     </div>
   );

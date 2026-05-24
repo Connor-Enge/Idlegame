@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { TILE, isWalkable, isBuilding } from "./map";
 import { NPCSprite, type Dir } from "./Sprite";
 
@@ -122,7 +122,7 @@ export interface NPCsHandle {
   npcAt: (x: number, y: number) => NPCDef | null;
 }
 
-const NPCs = forwardRef<NPCsHandle, object>(function NPCs(_, ref) {
+const NPCsInner = forwardRef<NPCsHandle, object>(function NPCs(_, ref) {
   // Track positions in a ref so the imperative handle stays consistent
   // even between renders. The render uses a parallel state object for the
   // actual DOM updates.
@@ -148,6 +148,9 @@ const NPCs = forwardRef<NPCsHandle, object>(function NPCs(_, ref) {
     </>
   );
 });
+// Memoised so a parent re-render (player step, day/night tick, etc.)
+// doesn't reset NPC scheduling.
+const NPCs = memo(NPCsInner);
 export default NPCs;
 
 function NPC({ def, onMove }: { def: NPCDef; onMove: (p: { x: number; y: number }) => void }) {

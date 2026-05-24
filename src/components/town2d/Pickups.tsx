@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { TILE, MAP_W, MAP_H, tileAt, isWalkable, isBuilding } from "./map";
 import { useGame } from "@/lib/store";
 
@@ -39,7 +39,7 @@ function bumpCash(amount: number) {
   });
 }
 
-export default function Pickups({
+function PickupsImpl({
   playerTile,
   onCollect,
 }: {
@@ -204,3 +204,13 @@ export default function Pickups({
     </>
   );
 }
+
+// Memoised on (playerTile.x, playerTile.y, onCollect) so a parent re-render
+// caused by something other than a step (e.g. floats added) doesn't rerun
+// the collision check and spawn logic.
+const Pickups = memo(PickupsImpl, (a, b) =>
+  a.playerTile.x === b.playerTile.x &&
+  a.playerTile.y === b.playerTile.y &&
+  a.onCollect === b.onCollect,
+);
+export default Pickups;
