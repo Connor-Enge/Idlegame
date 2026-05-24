@@ -10,6 +10,7 @@ import NPC from "./NPC";
 import { Fence, Lamps, Trees } from "./Decor";
 import { MovingCar, ParkedCars } from "./Vehicles";
 import { CashPickups } from "./CashPickup";
+import LemonadeStand from "./LemonadeStand";
 import Interior from "./Interior";
 import { INTERIORS } from "./interiors";
 
@@ -59,13 +60,19 @@ function resolveBuildingCollisions(pos: THREE.Vector3) {
 }
 
 // Outdoor world — ground, sky, day/night cycle, buildings, NPCs, vehicles,
-// trees, lamps, cash pickups, tutorial NPC, player.
+// trees, lamps, cash pickups, tutorial NPC, lemonade stand, player.
 function World({
   moveRef,
   onNearestChange,
+  lemonadePouringRef,
+  onLemonadeNear,
+  onLemonadePour,
 }: {
   moveRef: React.MutableRefObject<{ x: number; y: number }>;
   onNearestChange: (spot: Spot | null) => void;
+  lemonadePouringRef: React.MutableRefObject<boolean>;
+  onLemonadeNear: (near: boolean) => void;
+  onLemonadePour: (cash: number, quality: "perfect" | "good" | "weak" | "spill") => void;
 }) {
   const playerRef = useRef<PlayerHandle>(null);
   const { camera, scene } = useThree();
@@ -222,6 +229,13 @@ function World({
 
       <CashPickups playerPos={playerPos} />
 
+      <LemonadeStand
+        playerPos={playerPos}
+        pouringRef={lemonadePouringRef}
+        onPour={onLemonadePour}
+        onNearChange={onLemonadeNear}
+      />
+
       <Player ref={playerRef} />
     </>
   );
@@ -235,17 +249,29 @@ export default function TownScene({
   joystick,
   onNearestSpot,
   onNearestInterior,
+  lemonadePouringRef,
+  onLemonadeNear,
+  onLemonadePour,
 }: {
   mode: string;
   joystick: React.MutableRefObject<{ x: number; y: number }>;
   onNearestSpot: (spot: Spot | null) => void;
   onNearestInterior: (target: null | "exit" | string) => void;
+  lemonadePouringRef: React.MutableRefObject<boolean>;
+  onLemonadeNear: (near: boolean) => void;
+  onLemonadePour: (cash: number, quality: "perfect" | "good" | "weak" | "spill") => void;
 }) {
   const interior = mode === "town" ? null : INTERIORS[mode] ?? null;
   return (
     <Canvas shadows camera={{ position: [0, 16, 24], fov: 50 }} style={{ position: "fixed", inset: 0 }}>
       {!interior ? (
-        <World moveRef={joystick} onNearestChange={onNearestSpot} />
+        <World
+          moveRef={joystick}
+          onNearestChange={onNearestSpot}
+          lemonadePouringRef={lemonadePouringRef}
+          onLemonadeNear={onLemonadeNear}
+          onLemonadePour={onLemonadePour}
+        />
       ) : (
         <Interior config={interior} moveRef={joystick} onNearChange={onNearestInterior} />
       )}
