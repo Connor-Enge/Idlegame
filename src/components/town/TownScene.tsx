@@ -10,7 +10,8 @@ import NPC from "./NPC";
 import { Fence, Lamps, Trees } from "./Decor";
 import { MovingCar, ParkedCars } from "./Vehicles";
 import { CashPickups } from "./CashPickup";
-import CasinoInterior from "./CasinoInterior";
+import Interior from "./Interior";
+import { INTERIORS } from "./interiors";
 
 export interface Spot {
   id: string;
@@ -20,14 +21,17 @@ export interface Spot {
   position: [number, number];
   size: [number, number, number];
   route: string;
-  interior?: "casino"; // if set, "Enter" switches to that interior scene
+  // If set, "Enter" swaps to the named interior scene instead of routing to
+  // the menu page. Slot machines / desks / etc. inside that interior route
+  // to the underlying menu page.
+  interior?: string;
 }
 
 export const SPOTS: Spot[] = [
-  { id: "jobs", label: "Career", emoji: "💼", color: "#0ea5e9", position: [-14, -10], size: [5, 7, 5], route: "/jobs" },
-  { id: "business", label: "Businesses", emoji: "🏢", color: "#a855f7", position: [-14, 8], size: [6, 10, 6], route: "/business" },
-  { id: "invest", label: "Markets", emoji: "📈", color: "#22c55e", position: [0, -16], size: [5, 8, 5], route: "/invest" },
-  { id: "realestate", label: "Real Estate", emoji: "🏘️", color: "#f59e0b", position: [14, -10], size: [5, 6, 5], route: "/realestate" },
+  { id: "jobs", label: "Career", emoji: "💼", color: "#0ea5e9", position: [-14, -10], size: [5, 7, 5], route: "/jobs", interior: "career" },
+  { id: "business", label: "Businesses", emoji: "🏢", color: "#a855f7", position: [-14, 8], size: [6, 10, 6], route: "/business", interior: "business" },
+  { id: "invest", label: "Markets", emoji: "📈", color: "#22c55e", position: [0, -16], size: [5, 8, 5], route: "/invest", interior: "markets" },
+  { id: "realestate", label: "Real Estate", emoji: "🏘️", color: "#f59e0b", position: [14, -10], size: [5, 6, 5], route: "/realestate", interior: "realestate" },
   { id: "gambling", label: "Casino", emoji: "🎰", color: "#ef4444", position: [14, 8], size: [6, 9, 6], route: "/gambling", interior: "casino" },
   { id: "economy", label: "City Hall", emoji: "🌍", color: "#94a3b8", position: [0, 12], size: [6, 8, 6], route: "/economy" },
   { id: "goals", label: "Trophies", emoji: "🏆", color: "#eab308", position: [-7, 18], size: [4, 5, 4], route: "/goals" },
@@ -223,25 +227,27 @@ function World({
   );
 }
 
-// Public wrapper — owns the Canvas, switches between outdoor World and the
-// CasinoInterior depending on `mode`.
+// Public wrapper — owns the Canvas, switches between outdoor World and one
+// of the interior scenes depending on `mode`. mode === "town" renders the
+// outdoor scene; any other value is treated as an interior id.
 export default function TownScene({
   mode,
   joystick,
   onNearestSpot,
   onNearestInterior,
 }: {
-  mode: "town" | "casino";
+  mode: string;
   joystick: React.MutableRefObject<{ x: number; y: number }>;
   onNearestSpot: (spot: Spot | null) => void;
   onNearestInterior: (target: null | "exit" | string) => void;
 }) {
+  const interior = mode === "town" ? null : INTERIORS[mode] ?? null;
   return (
     <Canvas shadows camera={{ position: [0, 16, 24], fov: 50 }} style={{ position: "fixed", inset: 0 }}>
-      {mode === "town" ? (
+      {!interior ? (
         <World moveRef={joystick} onNearestChange={onNearestSpot} />
       ) : (
-        <CasinoInterior moveRef={joystick} onNearChange={onNearestInterior} />
+        <Interior config={interior} moveRef={joystick} onNearChange={onNearestInterior} />
       )}
     </Canvas>
   );
