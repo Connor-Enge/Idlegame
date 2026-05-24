@@ -68,6 +68,33 @@ const VIEW_H = 18; // tiles tall visible
 const VIEW_PX_W = VIEW_W * TILE; // 416
 const VIEW_PX_H = VIEW_H * TILE; // 576
 
+const POS_KEY = "town2d:pos";
+
+interface SavedPos { x: number; y: number; facing: Dir }
+
+function readSavedPos(): SavedPos {
+  if (typeof window === "undefined") return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
+  try {
+    const raw = window.localStorage.getItem(POS_KEY);
+    if (!raw) return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
+    const parsed = JSON.parse(raw);
+    // Sanity — if the map shrank since last save, fall back to spawn.
+    const x = typeof parsed.x === "number" ? parsed.x : SPAWN.x;
+    const y = typeof parsed.y === "number" ? parsed.y : SPAWN.y;
+    const facing = ["up", "down", "left", "right"].includes(parsed.facing) ? parsed.facing : "down";
+    if (x < 0 || x >= MAP_W || y < 0 || y >= MAP_H) return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
+    if (!isWalkable(x, y)) return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
+    return { x, y, facing };
+  } catch {
+    return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
+  }
+}
+
+function writeSavedPos(p: SavedPos) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch {}
+}
+
 export default function Overworld({
   heldDir,
   onEnterDoor,
@@ -93,9 +120,13 @@ export default function Overworld({
     return () => clearInterval(t);
   }, []);
   const tint = dayTint(tod);
-  const [px, setPx] = useState(SPAWN.x); // tile-x at rest
-  const [py, setPy] = useState(SPAWN.y);
-  const [facing, setFacing] = useState<Dir>("down");
+  // Player position persists across reloads — read on mount, write on every
+  // committed step. SSR-safe because the parent dynamic-loads this as
+  // ssr:false, but we still guard against malformed storage.
+  const initial = readSavedPos();
+  const [px, setPx] = useState(initial.x);
+  const [py, setPy] = useState(initial.y);
+  const [facing, setFacing] = useState<Dir>(initial.facing);
   // Step animation state. step !== null while in-flight.
   const [phase, setPhase] = useState(0); // 0..1 within the active step
   const stepRef = useRef<null | { from: { x: number; y: number }; to: { x: number; y: number }; start: number }>(null);
@@ -126,6 +157,7 @@ export default function Overworld({
           setPx(s.to.x);
           setPy(s.to.y);
           setPhase(0);
+          writeSavedPos({ x: s.to.x, y: s.to.y, facing: heldRef.current ?? "down" });
           // Chain into the next step immediately if the player is still
           // holding a direction — Pokemon-style continuous walking.
           tryStartStep(s.to.x, s.to.y);
@@ -423,6 +455,8 @@ function Cell({ x, y }: { x: number; y: number }) {
         return <Fence />;
       case "w":
         return <Water />;
+      case "W":
+        return <Fountain />;
       case "f":
         return <Flowers v={variant(x, y)} />;
       case "s":
@@ -481,7 +515,35 @@ function Fence() {
 }
 
 function Water() {
-  return <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }} />;
+  return (
+    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }}>
+      {/* Subtle ripple highlight */}
+      <div style={{ position: "absolute", left: 4, top: 6, width: 10, height: 2, background: "rgba(255,255,255,0.35)", borderRadius: 2 }} />
+      <div style={{ position: "absolute", left: 14, top: 18, width: 8, height: 2, background: "rgba(255,255,255,0.25)", borderRadius: 2 }} />
+    </div>
+  );
+}
+
+function Fountain() {
+  return (
+    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", overflow: "visible" }}>
+      {/* Plinth base */}
+      <div style={{ position: "absolute", left: 10, top: 14, width: 12, height: 10, background: "#a8895a", border: "1.5px solid #5b3a1d", borderRadius: 2 }} />
+      {/* Spout column */}
+      <div style={{ position: "absolute", left: 14, top: 6, width: 4, height: 12, background: "#cbd5e1", border: "1px solid #475569" }} />
+      {/* Top spray */}
+      <div style={{ position: "absolute", left: 11, top: -2, width: 10, height: 8, background: "#7dd3fc", borderRadius: "50% 50% 30% 30%", boxShadow: "0 0 4px #38bdf8" }} />
+      {/* Splash droplets, animated */}
+      <div style={{ position: "absolute", left: 6, top: 4, width: 3, height: 3, background: "#bae6fd", borderRadius: "50%", animation: "spray 1.4s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", left: 22, top: 8, width: 3, height: 3, background: "#bae6fd", borderRadius: "50%", animation: "spray 1.4s ease-in-out infinite 0.4s" }} />
+      <style jsx>{`
+        @keyframes spray {
+          0%, 100% { transform: translateY(0); opacity: 0.4; }
+          50% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 function Flowers({ v }: { v: number }) {

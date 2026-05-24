@@ -11,6 +11,7 @@
 //   t  tree              - blocked
 //   F  fence             - blocked
 //   w  water             - blocked
+//   W  fountain centre   - blocked, water + decorative spout
 //   s  sign post         - blocked, interactable (future)
 //   #  generic wall      - blocked, gray
 //   j/J career office (blue) — door J → /jobs
@@ -91,8 +92,8 @@ const MAP_RAW = [
   "F.,,,,,,,,,,,,,,,,,,,,,,.F",
   "F.,....,,...ffff...,,....F",
   "F.,....,,..ffssff..,,....F",
-  "F.,....,,..ffffff..,,....F",
-  "F.,....,,...ffff...,,....F",
+  "F.,....,,..ffWwff..,,....F",
+  "F.,....,,...fwwf...,,....F",
   "F.,,,,,,,,,,,,,,,,,,,,,,.F",
   "F.,...rrrrr,,..,,ccccc...F",
   "F.,...rrrrr,,..,,ccccc...F",
