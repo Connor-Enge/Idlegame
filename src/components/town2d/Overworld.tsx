@@ -26,33 +26,8 @@ export interface DialogPayload {
   lines: string[];
 }
 
-const STEP_MS = 170; // duration of one tile step
-const DAY_LENGTH_MS = 300_000; // 5 min real time = one full day cycle
+const STEP_MS = 180; // duration of one tile step (matches CSS transition)
 
-// Day-night palette. tod is 0..1; 0 = midnight, 0.5 = noon. Returns a tint
-// colour + opacity that we paint over the world with `mix-blend-mode:
-// multiply` so the underlying tiles stay readable but feel warmer / cooler.
-function dayTint(tod: number): { color: string; opacity: number } {
-  // Sun height: 0 at midnight, 1 at noon.
-  const sun = Math.max(0, Math.sin(tod * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-  if (sun < 0.15) {
-    // Deep night → indigo overlay
-    return { color: "#0c1530", opacity: 0.55 - sun * 0.5 };
-  }
-  if (sun < 0.35) {
-    // Dawn / dusk — depend on which side of noon we're on.
-    const isDawn = tod < 0.5;
-    return { color: isDawn ? "#fb923c" : "#ec4899", opacity: 0.32 };
-  }
-  if (sun < 0.7) {
-    // Morning / afternoon — mild warm tint
-    return { color: "#fde68a", opacity: 0.12 };
-  }
-  // Full day — clear
-  return { color: "#ffffff", opacity: 0 };
-}
-
-// All possible movement directions, with the (dx, dy) they apply to (x, y).
 const DIRS: Record<Dir, { dx: number; dy: number }> = {
   up: { dx: 0, dy: -1 },
   down: { dx: 0, dy: 1 },
@@ -60,13 +35,11 @@ const DIRS: Record<Dir, { dx: number; dy: number }> = {
   right: { dx: 1, dy: 0 },
 };
 
-// Camera viewport — the part of the map visible at once. Smaller than the
-// map so the camera scrolls as the player walks. Sized to fit the 480-px
-// phone frame with a comfortable vertical margin.
-const VIEW_W = 13; // tiles wide visible
-const VIEW_H = 18; // tiles tall visible
-const VIEW_PX_W = VIEW_W * TILE; // 416
-const VIEW_PX_H = VIEW_H * TILE; // 576
+// Camera viewport.
+const VIEW_W = 13;
+const VIEW_H = 17;
+const VIEW_PX_W = VIEW_W * TILE;
+const VIEW_PX_H = VIEW_H * TILE;
 
 const POS_KEY = "town2d:pos";
 
@@ -78,7 +51,6 @@ function readSavedPos(): SavedPos {
     const raw = window.localStorage.getItem(POS_KEY);
     if (!raw) return { x: SPAWN.x, y: SPAWN.y, facing: "down" };
     const parsed = JSON.parse(raw);
-    // Sanity — if the map shrank since last save, fall back to spawn.
     const x = typeof parsed.x === "number" ? parsed.x : SPAWN.x;
     const y = typeof parsed.y === "number" ? parsed.y : SPAWN.y;
     const facing = ["up", "down", "left", "right"].includes(parsed.facing) ? parsed.facing : "down";
@@ -95,6 +67,16 @@ function writeSavedPos(p: SavedPos) {
   try { window.localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch {}
 }
 
+// Day-night palette using a soft rgba overlay (no mix-blend-mode — that's
+// expensive and tends to crush contrast on tile art). tod is 0..1.
+function dayTint(tod: number): string {
+  const sun = Math.max(0, Math.sin(tod * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+  if (sun < 0.2) return "rgba(12, 21, 48, 0.45)";       // deep night
+  if (sun < 0.4) return "rgba(255, 138, 64, 0.18)";     // dawn / dusk
+  if (sun < 0.7) return "rgba(253, 230, 138, 0.05)";    // morning
+  return "rgba(0, 0, 0, 0)";                            // clear day
+}
+
 export default function Overworld({
   heldDir,
   onEnterDoor,
@@ -104,78 +86,66 @@ export default function Overworld({
   heldDir: Dir | null;
   onEnterDoor: (door: DoorInfo) => void;
   onDialog: (payload: DialogPayload) => void;
-  // Door symbol key (e.g. "J") whose door should show a quest indicator,
-  // or null for none. The Overworld looks up the door's tile coords from
-  // the map and floats an arrow above it.
   questTarget: string | null;
 }) {
   const npcsRef = useRef<NPCsHandle>(null);
-  // Time of day, persists for the page lifetime. Starts at noon so the first
-  // load shows a clear daylight scene.
-  const [tod, setTod] = useState(0.5);
-  useEffect(() => {
-    const t = setInterval(() => {
-      setTod((cur) => (cur + 200 / DAY_LENGTH_MS) % 1);
-    }, 200);
-    return () => clearInterval(t);
-  }, []);
-  const tint = dayTint(tod);
-  // Player position persists across reloads — read on mount, write on every
-  // committed step. SSR-safe because the parent dynamic-loads this as
-  // ssr:false, but we still guard against malformed storage.
-  const initial = readSavedPos();
+  const initial = useMemo(readSavedPos, []);
   const [px, setPx] = useState(initial.x);
   const [py, setPy] = useState(initial.y);
   const [facing, setFacing] = useState<Dir>(initial.facing);
-  // Step animation state. step !== null while in-flight.
-  const [phase, setPhase] = useState(0); // 0..1 within the active step
-  const stepRef = useRef<null | { from: { x: number; y: number }; to: { x: number; y: number }; start: number }>(null);
+  const [walking, setWalking] = useState(false);
+
   const heldRef = useRef<Dir | null>(heldDir);
   heldRef.current = heldDir;
-  // Short-lived collection floaters. Each carries world coords + an amount;
-  // they fade out via CSS animation and are pruned by a short timer.
-  const [floats, setFloats] = useState<{ id: number; x: number; y: number; amount: number }[]>([]);
-  const onCashCollect = useCallback((amount: number, x: number, y: number) => {
-    const id = Date.now() + Math.random();
-    setFloats((f) => [...f, { id, x, y, amount }]);
-    setTimeout(() => setFloats((f) => f.filter((it) => it.id !== id)), 1200);
-  }, []);
 
-  // Drive the step machine with a single rAF loop. Held direction is read
-  // from a ref so the loop never re-binds on input changes.
+  // Step machine — runs as a setTimeout loop. While idle, polls held
+  // direction every 60 ms and starts a step if one is held. While stepping,
+  // waits STEP_MS for the CSS transition to finish, then evaluates the
+  // next step. Zero rAF, zero per-frame React re-renders.
   useEffect(() => {
-    let raf = 0;
-    const loop = (t: number) => {
-      const s = stepRef.current;
-      if (s) {
-        const elapsed = t - s.start;
-        const p = Math.min(1, elapsed / STEP_MS);
-        setPhase(p);
-        if (p >= 1) {
-          // Commit the step.
-          stepRef.current = null;
-          setPx(s.to.x);
-          setPy(s.to.y);
-          setPhase(0);
-          writeSavedPos({ x: s.to.x, y: s.to.y, facing: heldRef.current ?? "down" });
-          // Chain into the next step immediately if the player is still
-          // holding a direction — Pokemon-style continuous walking.
-          tryStartStep(s.to.x, s.to.y);
-        }
-      } else {
-        // Idle — see if a held direction should start a step now.
-        tryStartStep(px, py);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [px, py]);
+    let timer: ReturnType<typeof setTimeout>;
+    let posX = px;
+    let posY = py;
+    let live = true;
 
-  // Keyboard input — bound globally so the player can walk without focusing
-  // the canvas. Maps WASD + arrows to the same directions the on-screen pad
-  // emits. We mirror to the same ref the d-pad uses.
+    function tryStep() {
+      if (!live) return;
+      const dir = heldRef.current;
+      if (!dir) {
+        setWalking(false);
+        timer = setTimeout(tryStep, 60);
+        return;
+      }
+      setFacing(dir);
+      const { dx, dy } = DIRS[dir];
+      const tx = posX + dx;
+      const ty = posY + dy;
+
+      const door = doorAt(tx, ty);
+      if (door) { heldRef.current = null; setWalking(false); onEnterDoor(door); timer = setTimeout(tryStep, 60); return; }
+      const sign = signAt(tx, ty);
+      if (sign) { heldRef.current = null; setWalking(false); onDialog({ lines: sign }); timer = setTimeout(tryStep, 60); return; }
+      const npc = npcsRef.current?.npcAt(tx, ty);
+      if (npc) { heldRef.current = null; setWalking(false); onDialog({ who: npc.name, lines: npc.lines }); timer = setTimeout(tryStep, 60); return; }
+      if (!isWalkable(tx, ty)) { setWalking(false); timer = setTimeout(tryStep, 80); return; }
+
+      // Commit the step: CSS transition animates from old to new position
+      // over STEP_MS. Schedule the next decision for when the animation
+      // completes.
+      setWalking(true);
+      posX = tx;
+      posY = ty;
+      setPx(tx);
+      setPy(ty);
+      writeSavedPos({ x: tx, y: ty, facing: dir });
+      timer = setTimeout(tryStep, STEP_MS);
+    }
+
+    tryStep();
+    return () => { live = false; clearTimeout(timer); };
+  }, [onEnterDoor, onDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard input.
   useEffect(() => {
     const map: Record<string, Dir> = {
       ArrowUp: "up", w: "up", W: "up",
@@ -190,112 +160,78 @@ export default function Overworld({
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
-  function tryStartStep(fromX: number, fromY: number) {
-    const dir = heldRef.current;
-    if (!dir) return;
-    setFacing(dir);
-    const { dx, dy } = DIRS[dir];
-    const tx = fromX + dx;
-    const ty = fromY + dy;
-    // Door interaction takes priority — bumping into a door opens it,
-    // player stays put.
-    const door = doorAt(tx, ty);
-    if (door) {
-      heldRef.current = null; // consume hold so it doesn't auto-retrigger
-      onEnterDoor(door);
-      return;
-    }
-    const sign = signAt(tx, ty);
-    if (sign) {
-      heldRef.current = null;
-      onDialog({ lines: sign });
-      return;
-    }
-    const npc = npcsRef.current?.npcAt(tx, ty);
-    if (npc) {
-      heldRef.current = null;
-      onDialog({ who: npc.name, lines: npc.lines });
-      return;
-    }
-    if (!isWalkable(tx, ty)) return; // blocked — face only
-    stepRef.current = { from: { x: fromX, y: fromY }, to: { x: tx, y: ty }, start: performance.now() };
-  }
+  // Day-night — tick once per second, not every 200 ms. The eye can't
+  // discriminate at that resolution anyway.
+  const [tod, setTod] = useState(0.5);
+  useEffect(() => {
+    const t = setInterval(() => setTod((c) => (c + 1 / 300) % 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const tintColor = dayTint(tod);
 
-  // Interpolated pixel position for the player + camera. During a step the
-  // player slides smoothly from `from` to `to`; at rest, sits at (px, py).
-  const renderX = stepRef.current
-    ? stepRef.current.from.x + (stepRef.current.to.x - stepRef.current.from.x) * phase
-    : px;
-  const renderY = stepRef.current
-    ? stepRef.current.from.y + (stepRef.current.to.y - stepRef.current.from.y) * phase
-    : py;
+  // Camera position — clamped to map edges, lerps via CSS transition that
+  // matches the step duration so the camera stays glued to the player.
+  const camX = Math.max(0, Math.min(MAP_W * TILE - VIEW_PX_W, px * TILE + TILE / 2 - VIEW_PX_W / 2));
+  const camY = Math.max(0, Math.min(MAP_H * TILE - VIEW_PX_H, py * TILE + TILE / 2 - VIEW_PX_H / 2));
 
-  // Camera follows the player, clamped to map edges so the void never shows.
-  const camX = Math.max(0, Math.min(MAP_W * TILE - VIEW_PX_W, renderX * TILE + TILE / 2 - VIEW_PX_W / 2));
-  const camY = Math.max(0, Math.min(MAP_H * TILE - VIEW_PX_H, renderY * TILE + TILE / 2 - VIEW_PX_H / 2));
+  // Pickup collection floaters.
+  const [floats, setFloats] = useState<{ id: number; x: number; y: number; amount: number }[]>([]);
+  const onCashCollect = useCallback((amount: number, x: number, y: number) => {
+    const id = Date.now() + Math.random();
+    setFloats((f) => [...f, { id, x, y, amount }]);
+    setTimeout(() => setFloats((f) => f.filter((it) => it.id !== id)), 1200);
+  }, []);
 
   return (
     <div
-      className="relative mx-auto overflow-hidden bg-[#162017]"
-      style={{ width: VIEW_PX_W, height: VIEW_PX_H, imageRendering: "pixelated" }}
+      className="relative mx-auto overflow-hidden"
+      style={{
+        width: VIEW_PX_W,
+        height: VIEW_PX_H,
+        background: "#3f7d3a",
+        contain: "layout paint",
+        imageRendering: "pixelated",
+      }}
     >
-      {/* Day/night tint overlay — covers the viewport, sits above the world
-          but beneath any HUD. Uses multiply so dark tiles get darker and
-          light tiles get coloured without losing detail. */}
+      {/* World layer — sits inside the viewport, translated by the camera.
+          translate3d engages the GPU compositor so the camera move is
+          essentially free per frame. */}
       <div
         style={{
           position: "absolute",
-          inset: 0,
-          background: tint.color,
-          opacity: tint.opacity,
-          mixBlendMode: "multiply",
-          pointerEvents: "none",
-          zIndex: 60,
-          transition: "background 400ms linear, opacity 400ms linear",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: -camX,
-          top: -camY,
+          left: 0, top: 0,
           width: MAP_W * TILE,
           height: MAP_H * TILE,
+          transform: `translate3d(${-camX}px, ${-camY}px, 0)`,
+          transition: walking ? `transform ${STEP_MS}ms linear` : "none",
+          willChange: "transform",
         }}
       >
-        <Tiles />
+        <StaticTiles />
 
-        {/* Money pickups — collected when the player's tile matches. */}
         <Pickups playerTile={{ x: px, y: py }} onCollect={onCashCollect} />
-
-        {/* Wandering NPCs — bumping into one opens their dialog. */}
         <NPCs ref={npcsRef} />
 
-        {/* Player — rendered above tiles. Pixel position interpolated. */}
+        {/* Player — CSS transition animates between tile positions. The
+            walk cycle is driven by a CSS keyframe via the `walking` class
+            on the sprite. */}
         <div
           style={{
             position: "absolute",
-            left: renderX * TILE,
-            top: renderY * TILE,
+            left: 0, top: 0,
             width: TILE,
             height: TILE,
-            zIndex: Math.floor(renderY) + 2,
+            transform: `translate3d(${px * TILE}px, ${py * TILE}px, 0)`,
+            transition: walking ? `transform ${STEP_MS}ms linear` : "none",
+            willChange: "transform",
+            zIndex: py + 5,
           }}
         >
-          <PlayerSprite
-            facing={facing}
-            walking={stepRef.current !== null}
-            phase={phase}
-          />
+          <PlayerSprite facing={facing} walking={walking} />
         </div>
 
-        {/* Door labels — float above each door so the player can see where
-            they're heading. zIndex puts them under the player when they're
-            standing in front of the door. */}
         <DoorLabels questTarget={questTarget} />
 
-        {/* Collection floaters — fade-up "+$N" indicators at the pickup
-            tile. Lifetimes managed by the parent's setTimeout. */}
         {floats.map((f) => (
           <div
             key={f.id}
@@ -310,7 +246,7 @@ export default function Overworld({
               color: "#bbf7d0",
               textShadow: "0 1px 2px #000",
               pointerEvents: "none",
-              zIndex: 50,
+              zIndex: 80,
               animation: "cashPop 1.2s ease-out forwards",
             }}
           >
@@ -319,7 +255,31 @@ export default function Overworld({
         ))}
       </div>
 
-      <style jsx>{`
+      {/* Day/night tint — single rgba overlay over the viewport. No
+          mix-blend-mode (expensive). 600 ms transition between tints. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: tintColor,
+          pointerEvents: "none",
+          zIndex: 70,
+          transition: "background 600ms linear",
+        }}
+      />
+
+      {/* Walk-cycle keyframes + cash floater keyframes. */}
+      <style jsx global>{`
+        @keyframes t2dLegL { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+        @keyframes t2dLegR { 0%, 100% { transform: translateY(-1.5px); } 50% { transform: translateY(0); } }
+        @keyframes t2dArmL { 0%, 100% { transform: translateY(0.5px); } 50% { transform: translateY(-0.5px); } }
+        @keyframes t2dArmR { 0%, 100% { transform: translateY(-0.5px); } 50% { transform: translateY(0.5px); } }
+        @keyframes t2dBob  { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+        .t2d-char-walk .t2d-leg-left  { animation: t2dLegL ${STEP_MS * 2}ms linear infinite; }
+        .t2d-char-walk .t2d-leg-right { animation: t2dLegR ${STEP_MS * 2}ms linear infinite; }
+        .t2d-char-walk .t2d-arm-left  { animation: t2dArmL ${STEP_MS * 2}ms linear infinite; }
+        .t2d-char-walk .t2d-arm-right { animation: t2dArmR ${STEP_MS * 2}ms linear infinite; }
+        .t2d-char-walk { animation: t2dBob ${STEP_MS * 2}ms linear infinite; }
         @keyframes cashPop {
           0% { opacity: 0; transform: translateY(4px) scale(0.85); }
           15% { opacity: 1; transform: translateY(0) scale(1); }
@@ -330,22 +290,27 @@ export default function Overworld({
   );
 }
 
-// ------------------------------------------------------------------
-// Memoised tile rendering. The tile grid never changes after mount, so we
-// render it once and let the camera transform handle scrolling.
+// --- Static tile rendering -------------------------------------------------
+// Every static tile (grass, path, fence, tree, flower, sign, water, fountain,
+// building cells) is rendered exactly once at mount inside a memoised group.
+// Background imagery uses pre-computed SVG data URIs that the browser caches
+// per-variant, so 200 grass tiles cost the same as 3 (one image per variant).
 
-function Tiles() {
-  const cells = useMemo(() => {
-    const out: React.ReactNode[] = [];
-    for (let y = 0; y < MAP_H; y++) {
-      for (let x = 0; x < MAP_W; x++) {
-        out.push(<Cell key={`${x},${y}`} x={x} y={y} />);
+const StaticTiles = (function () {
+  let cached: React.ReactNode | null = null;
+  return function StaticTiles() {
+    if (!cached) {
+      const out: React.ReactNode[] = [];
+      for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+          out.push(<Cell key={`${x},${y}`} x={x} y={y} />);
+        }
       }
+      cached = <>{out}</>;
     }
-    return out;
-  }, []);
-  return <>{cells}</>;
-}
+    return cached;
+  };
+})();
 
 function Cell({ x, y }: { x: number; y: number }) {
   const sym = tileAt(x, y);
@@ -357,44 +322,90 @@ function Cell({ x, y }: { x: number; y: number }) {
     return <BuildingCell x={x} y={y} left={left} top={top} v={v} />;
   }
 
-  // Decorative / decorative-blocker tiles drawn on top of grass.
-  const decor = (() => {
-    switch (sym) {
-      case "t":
-        return <Tree v={v} />;
-      case "F":
-        return <Fence />;
-      case "w":
-        return <Water v={v} />;
-      case "W":
-        return <Fountain />;
-      case "f":
-        return <Flowers v={v} />;
-      case "s":
-        return <Sign />;
-      default:
-        return null;
-    }
-  })();
-
-  // Pick the base tile. Path tiles render their own dirt texture; grass
-  // (anything else walkable + the ground beneath decor) gets a grass
-  // background. Water/fence tiles paint their full backdrop themselves so
-  // we don't need a base behind them.
-  const baseEl =
-    sym === "," ? <Path v={v} /> :
-    sym === "w" || sym === "W" || sym === "F" ? null :
-    <Grass v={v} />;
+  // Pick the right background image for the tile type. Decorations like
+  // trees/flowers/sign overlay onto a grass base so they tile cleanly with
+  // neighbouring grass.
+  let bg: string;
+  switch (sym) {
+    case ",": bg = PATH_URIS[v]; break;
+    case "F": bg = FENCE_URI; break;
+    case "w": bg = WATER_URIS[v]; break;
+    case "W": return <FountainTile left={left} top={top} />;
+    case "s": return <SignTile left={left} top={top} v={v} />;
+    case "t": return <DecorTile left={left} top={top} v={v} url={TREE_URIS[v]} />;
+    case "f": return <DecorTile left={left} top={top} v={v} url={FLOWER_URIS[v]} />;
+    default:  bg = GRASS_URIS[v];
+  }
 
   return (
-    <div style={{ position: "absolute", left, top, width: TILE, height: TILE }}>
-      {baseEl}
-      {decor}
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: TILE, height: TILE,
+        backgroundImage: `url("${bg}")`,
+        backgroundSize: "100% 100%",
+      }}
+    />
+  );
+}
+
+function DecorTile({ left, top, v, url }: { left: number; top: number; v: number; url: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: TILE, height: TILE,
+        backgroundImage: `url("${url}"), url("${GRASS_URIS[v]}")`,
+        backgroundSize: "100% 100%, 100% 100%",
+      }}
+    />
+  );
+}
+
+function SignTile({ left, top, v }: { left: number; top: number; v: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: TILE, height: TILE,
+        backgroundImage: `url("${SIGN_URI}"), url("${GRASS_URIS[v]}")`,
+        backgroundSize: "100% 100%, 100% 100%",
+      }}
+    />
+  );
+}
+
+function FountainTile({ left, top }: { left: number; top: number }) {
+  // Fountain spout is animated, so keep it as a small DOM cluster on top
+  // of the static water sprite. Only one tile in the map; cost is trivial.
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: TILE, height: TILE,
+        backgroundImage: `url("${WATER_URIS[0]}")`,
+        backgroundSize: "100% 100%",
+      }}
+    >
+      <div style={{ position: "absolute", left: 8, top: 18, width: 16, height: 6, background: "#737373", border: "1.5px solid #404040", borderRadius: 2 }} />
+      <div style={{ position: "absolute", left: 11, top: 13, width: 10, height: 6, background: "#a1a1aa", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
+      <div style={{ position: "absolute", left: 13, top: 8, width: 6, height: 6, background: "#94a3b8", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
+      <div style={{ position: "absolute", left: 15, top: 2, width: 2, height: 6, background: "#7dd3fc", borderRadius: 1, animation: "fSpout 1.6s ease-in-out infinite" }} />
+      <style jsx>{`
+        @keyframes fSpout {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.3); }
+        }
+      `}</style>
     </div>
   );
 }
 
-// -- Buildings -----------------------------------------------------------
+// --- Buildings -------------------------------------------------------------
 
 function BuildingCell({
   x, y, left, top, v,
@@ -402,26 +413,12 @@ function BuildingCell({
   const palette = buildingPaletteAt(x, y)!;
   const isRoof = isRoofCell(x, y);
   const door = doorAt(x, y);
-
-  // Detect surrounding building cells so we can render proper corners,
-  // gables, and "this is the front of the building" details. A door tile
-  // is always the front; the cell above the door becomes the gable; roof
-  // cells in the corners get pointed edges.
   const isAboveDoor = !!doorAt(x, y + 1);
   const isWindow = !door && !isRoof && !isAboveDoor && v !== 0;
-
-  // Z-index: roofs above neighbouring grass, doors above roofs (so the
-  // awning isn't clipped), gable above roof.
-  const z = door ? 4 : isAboveDoor ? 3 : isRoof ? 2 : 2;
+  const z = door ? 4 : isAboveDoor ? 3 : 2;
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        left, top, width: TILE, height: TILE,
-        zIndex: z,
-      }}
-    >
+    <div style={{ position: "absolute", left, top, width: TILE, height: TILE, zIndex: z }}>
       {isRoof ? (
         <Roof palette={palette} cornerLeft={!isBuilding(x - 1, y)} cornerRight={!isBuilding(x + 1, y)} />
       ) : door ? (
@@ -435,159 +432,96 @@ function BuildingCell({
   );
 }
 
+type BuildingPaletteLite = { wall: string; roof: string; door: string };
+
 function Roof({ palette, cornerLeft, cornerRight }: { palette: BuildingPaletteLite; cornerLeft: boolean; cornerRight: boolean }) {
-  // Sloped roof drawn with a darker top half (shadow side) and lighter
-  // bottom (sun side), plus horizontal shingle lines. Corner cells round
-  // outward to suggest a pitched roof end.
   return (
     <div
       style={{
         position: "absolute", inset: 0,
-        background: `linear-gradient(180deg, ${palette.roof} 0%, ${palette.roof} 50%, ${shade(palette.roof, -15)} 50%, ${shade(palette.roof, -25)} 100%)`,
+        background: `linear-gradient(180deg, ${palette.roof} 0%, ${palette.roof} 50%, ${shadeHex(palette.roof, -20)} 50%, ${shadeHex(palette.roof, -30)} 100%)`,
         borderRadius: `${cornerLeft ? "6px" : "0"} ${cornerRight ? "6px" : "0"} 0 0`,
-        boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.4), 0 2px 0 rgba(0,0,0,0.25)",
-      }}
-    >
-      {/* Shingle row dividers */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: 9, height: 1, background: "rgba(0,0,0,0.3)" }} />
-      <div style={{ position: "absolute", left: 0, right: 0, top: 19, height: 1, background: "rgba(0,0,0,0.3)" }} />
-      {/* Shingle staggered ticks */}
-      <div style={{ position: "absolute", left: 8, top: 4, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
-      <div style={{ position: "absolute", left: 24, top: 4, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
-      <div style={{ position: "absolute", left: 16, top: 14, width: 1, height: 4, background: "rgba(0,0,0,0.25)" }} />
-    </div>
-  );
-}
-
-function Wall({ palette, window }: { palette: BuildingPaletteLite; window: boolean }) {
-  // Stucco wall with a faint brick pattern via repeating gradient + a
-  // soft inner shadow for depth. Optional window cluster.
-  return (
-    <div
-      style={{
-        position: "absolute", inset: 0,
-        background: `linear-gradient(180deg, ${shade(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -2px 0 rgba(0,0,0,0.25)",
-      }}
-    >
-      {/* Brick courses — faint horizontal lines + offset half-brick marks */}
-      <BrickPattern />
-      {window && <Window palette={palette} />}
-    </div>
-  );
-}
-
-function BrickPattern() {
-  // Pure-CSS brick: horizontal lines every 5px, offset half-brick lines
-  // alternating per row. Subtle so it doesn't compete with the windows.
-  return (
-    <div
-      style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        backgroundImage:
-          "linear-gradient(0deg, rgba(0,0,0,0.18) 1px, transparent 1px), " +
-          "linear-gradient(90deg, rgba(0,0,0,0.18) 1px, transparent 1px)",
-        backgroundSize: "11px 6px",
-        backgroundPosition: "0 0, 0 0",
-        opacity: 0.5,
+        boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.4)",
       }}
     />
   );
 }
 
-function Window({ palette }: { palette: BuildingPaletteLite }) {
-  // Framed window with sill, shutters, and a warm glow inside. The glow
-  // stays consistent at all hours; day/night tint reads it as cooler at
-  // night which sells the "lit window" feel.
+function Wall({ palette, window }: { palette: BuildingPaletteLite; window: boolean }) {
   return (
-    <>
-      {/* Sill */}
-      <div style={{ position: "absolute", left: 4, top: 21, right: 4, height: 2, background: shade(palette.wall, -30), boxShadow: "0 1px 0 rgba(0,0,0,0.4)" }} />
-      {/* Window frame */}
-      <div
-        style={{
-          position: "absolute", left: 6, top: 7, width: TILE - 12, height: 14,
-          background: "linear-gradient(180deg, #fde68a 0%, #fcd34d 100%)",
-          border: "1.5px solid #1f2937",
-          borderRadius: 1,
-          boxShadow: "inset 0 0 4px rgba(254,243,199,0.8), 0 0 3px rgba(252,211,77,0.7)",
-        }}
-      >
-        {/* Mullion cross */}
-        <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: "#1f2937" }} />
-        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, marginTop: -0.5, background: "#1f2937" }} />
-      </div>
-      {/* Shutters */}
-      <div style={{ position: "absolute", left: 2, top: 7, width: 3, height: 14, background: shade(palette.roof, -20), borderRadius: 1, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.3)" }} />
-      <div style={{ position: "absolute", right: 2, top: 7, width: 3, height: 14, background: shade(palette.roof, -20), borderRadius: 1, boxShadow: "inset 1px 0 0 rgba(0,0,0,0.3)" }} />
-    </>
+    <div
+      style={{
+        position: "absolute", inset: 0,
+        background: `linear-gradient(180deg, ${shadeHex(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
+      }}
+    >
+      {window && (
+        <div
+          style={{
+            position: "absolute", left: 6, top: 9, right: 6, height: 14,
+            background: "#fde68a",
+            border: "1.5px solid #1f2937",
+            borderRadius: 1,
+            boxShadow: "inset 0 0 3px rgba(252,211,77,0.7)",
+          }}
+        >
+          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: "#1f2937" }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, marginTop: -0.5, background: "#1f2937" }} />
+        </div>
+      )}
+    </div>
   );
 }
 
 function Gable({ palette }: { palette: BuildingPaletteLite }) {
-  // The cell directly above the door. Acts as the building's "facade
-  // detail" tile — gets a wood-trim, a hanging sign placeholder and the
-  // brick wall behind it.
   return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <Wall palette={palette} window={false} />
-      {/* Roof trim strip */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3, background: palette.roof, boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.4)" }} />
-      {/* Hanging sign */}
-      <div style={{ position: "absolute", left: "50%", top: 6, marginLeft: -8, width: 16, height: 12, background: "linear-gradient(180deg, #d4a574, #a8895a)", border: "1.5px solid #5b3a1d", borderRadius: 1, boxShadow: "0 2px 2px rgba(0,0,0,0.4)" }}>
-        <div style={{ position: "absolute", left: 1, top: 1, right: 1, bottom: 1, background: shade(palette.roof, 0), borderRadius: 1 }} />
-      </div>
-      {/* Sign chains */}
-      <div style={{ position: "absolute", left: "50%", top: 3, marginLeft: -7, width: 1, height: 4, background: "#1f2937" }} />
-      <div style={{ position: "absolute", left: "50%", top: 3, marginLeft: 6, width: 1, height: 4, background: "#1f2937" }} />
+    <div style={{ position: "absolute", inset: 0, background: palette.wall }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3, background: palette.roof }} />
+      <div
+        style={{
+          position: "absolute", left: "50%", top: 7, marginLeft: -8,
+          width: 16, height: 12,
+          background: shadeHex(palette.roof, -10),
+          border: "1.5px solid #1f2937",
+          borderRadius: 1,
+        }}
+      />
     </div>
   );
 }
 
 function Door({ palette, icon }: { palette: BuildingPaletteLite; icon: string }) {
-  // The door tile is the player's interaction target. It needs to stand
-  // out from afar — bright awning above, dark wooden door with panels,
-  // welcome mat on the path below.
   return (
     <div
       style={{
         position: "absolute", inset: 0,
-        background: `linear-gradient(180deg, ${shade(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
-        boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.3)",
+        background: `linear-gradient(180deg, ${shadeHex(palette.wall, 10)} 0%, ${palette.wall} 100%)`,
       }}
     >
-      {/* Awning — striped fabric overhang */}
       <div
         style={{
           position: "absolute", left: 1, right: 1, top: 0, height: 6,
-          background: `repeating-linear-gradient(90deg, ${palette.roof} 0 4px, ${shade(palette.roof, 15)} 4px 8px)`,
+          background: `repeating-linear-gradient(90deg, ${palette.roof} 0 4px, ${shadeHex(palette.roof, 15)} 4px 8px)`,
           borderBottom: "1.5px solid #1f2937",
-          boxShadow: "0 2px 2px rgba(0,0,0,0.3)",
         }}
       />
-      {/* Doorway frame */}
       <div
         style={{
-          position: "absolute", left: 6, top: 8, width: TILE - 12, height: 22,
-          background: "#2a1810",
+          position: "absolute", left: 6, top: 8, right: 6, bottom: 0,
+          background: "linear-gradient(180deg, #5b3a1d 0%, #4a2f1a 100%)",
           border: "1.5px solid #1f2937",
-          borderRadius: "6px 6px 0 0",
-          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)",
+          borderRadius: "5px 5px 0 0",
         }}
       >
-        {/* Door panel — wood grain effect with two panels */}
-        <div style={{ position: "absolute", left: 2, top: 2, right: 2, bottom: 0, background: "linear-gradient(180deg, #5b3a1d 0%, #4a2f1a 100%)", borderRadius: "5px 5px 0 0" }}>
-          <div style={{ position: "absolute", left: 2, top: 2, right: 2, height: 7, border: "1px solid #2a1810", borderRadius: 1, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
-          <div style={{ position: "absolute", left: 2, top: 11, right: 2, height: 7, border: "1px solid #2a1810", borderRadius: 1, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
-        </div>
-        {/* Knob */}
-        <div style={{ position: "absolute", right: 4, top: 11, width: 2, height: 2, background: "#fbbf24", borderRadius: "50%", boxShadow: "0 0 1px #d97706" }} />
+        <div style={{ position: "absolute", right: 3, top: 9, width: 2, height: 2, background: "#fbbf24", borderRadius: "50%" }} />
       </div>
-      {/* Building icon over the door */}
       <div
         style={{
-          position: "absolute", left: "50%", top: 9, marginLeft: -7, width: 14, height: 7,
-          background: shade(palette.roof, 0), border: "1px solid rgba(0,0,0,0.4)", borderRadius: 1,
+          position: "absolute", left: "50%", top: 9, marginLeft: -7,
+          width: 14, height: 7,
+          background: palette.roof,
+          border: "1px solid rgba(0,0,0,0.4)",
+          borderRadius: 1,
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 7, lineHeight: "7px",
         }}
@@ -598,360 +532,8 @@ function Door({ palette, icon }: { palette: BuildingPaletteLite; icon: string })
   );
 }
 
-// Lite alias matching the part of the palette we use inside Cells.
-type BuildingPaletteLite = { wall: string; roof: string; door: string };
+// --- Door labels + quest target -------------------------------------------
 
-// Lighten / darken a hex colour by `pct` percent (-100..100). Used so every
-// tile can derive shading from its building palette without us having to
-// store separate "wall-lit" + "wall-shadow" colours in PALETTES.
-function shade(hex: string, pct: number): string {
-  const c = hex.replace("#", "");
-  const r = parseInt(c.substring(0, 2), 16);
-  const g = parseInt(c.substring(2, 4), 16);
-  const b = parseInt(c.substring(4, 6), 16);
-  const f = pct / 100;
-  const adj = (n: number) => Math.max(0, Math.min(255, Math.round(n + (f > 0 ? (255 - n) * f : n * f))));
-  return `rgb(${adj(r)}, ${adj(g)}, ${adj(b)})`;
-}
-
-// -- Tile backgrounds ----------------------------------------------------
-
-function Grass({ v }: { v: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background:
-          "radial-gradient(circle at 30% 40%, #6ec265 0%, #4f9c47 70%), #4a9242",
-      }}
-    >
-      {/* Grass tufts — short dark blades scattered in a deterministic pattern.
-          Three variants so neighbouring tiles look different. */}
-      {v === 0 && (
-        <>
-          <Tuft x={6} y={20} h={5} />
-          <Tuft x={20} y={8} h={4} />
-          <Tuft x={14} y={26} h={6} />
-        </>
-      )}
-      {v === 1 && (
-        <>
-          <Tuft x={4} y={6} h={4} />
-          <Tuft x={22} y={22} h={5} />
-          <Pebble x={16} y={14} />
-        </>
-      )}
-      {v === 2 && (
-        <>
-          <Tuft x={10} y={4} h={4} />
-          <Tuft x={2} y={24} h={5} />
-          <Tuft x={26} y={18} h={4} />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Tuft({ x, y, h }: { x: number; y: number; h: number }) {
-  return (
-    <>
-      <div style={{ position: "absolute", left: x, top: y, width: 1, height: h, background: "#2f6b30", borderRadius: 1 }} />
-      <div style={{ position: "absolute", left: x + 2, top: y - 1, width: 1, height: h + 1, background: "#2f6b30", borderRadius: 1 }} />
-      <div style={{ position: "absolute", left: x + 4, top: y, width: 1, height: h, background: "#2f6b30", borderRadius: 1 }} />
-    </>
-  );
-}
-
-function Pebble({ x, y }: { x: number; y: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute", left: x, top: y, width: 4, height: 3,
-        background: "#9ca3af", borderRadius: "50%",
-        boxShadow: "inset -1px -1px 0 rgba(0,0,0,0.3), 0 1px 0 rgba(0,0,0,0.2)",
-      }}
-    />
-  );
-}
-
-function Path({ v }: { v: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background:
-          "linear-gradient(180deg, #cba37a 0%, #b58b5e 100%)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.18)",
-      }}
-    >
-      {/* Cobblestone-ish speckles. Different placement per variant so the
-          path doesn't look uniformly tiled. */}
-      {v === 0 && (
-        <>
-          <Speckle x={6} y={8} c="#8c6435" />
-          <Speckle x={20} y={14} c="#8c6435" />
-          <Speckle x={12} y={22} c="#7a572d" />
-          <Speckle x={26} y={4} c="#7a572d" />
-        </>
-      )}
-      {v === 1 && (
-        <>
-          <Speckle x={4} y={20} c="#8c6435" />
-          <Speckle x={22} y={6} c="#7a572d" />
-          <Speckle x={14} y={14} c="#7a572d" />
-        </>
-      )}
-      {v === 2 && (
-        <>
-          <Speckle x={8} y={4} c="#8c6435" />
-          <Speckle x={24} y={22} c="#7a572d" />
-          <Speckle x={2} y={12} c="#8c6435" />
-          <Speckle x={18} y={26} c="#7a572d" />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Speckle({ x, y, c }: { x: number; y: number; c: string }) {
-  return (
-    <div
-      style={{
-        position: "absolute", left: x, top: y, width: 3, height: 2,
-        background: c, borderRadius: "50%",
-      }}
-    />
-  );
-}
-
-function Tree({ v }: { v: number }) {
-  // Three-tone canopy: dark base, mid body, light highlight. The light
-  // disc sits on the upper-left to suggest a sun-lit dome.
-  const palette = v === 0
-    ? { d: "#1b5e20", m: "#2e7d32", l: "#4caf50" }
-    : v === 1
-    ? { d: "#1a4d2e", m: "#2a6b3f", l: "#3f9c55" }
-    : { d: "#0f3f1f", m: "#1f5530", l: "#36844a" };
-  return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      {/* Shadow on grass */}
-      <div style={{ position: "absolute", left: 6, top: 24, width: 20, height: 5, background: "rgba(0,0,0,0.35)", borderRadius: "50%", filter: "blur(1px)" }} />
-      {/* Trunk */}
-      <div style={{ position: "absolute", left: 13, top: 20, width: 6, height: 8, background: "#6b4423", borderRadius: "1px", boxShadow: "inset -1px 0 0 #4a2f1a" }} />
-      {/* Canopy — three stacked discs for depth */}
-      <div style={{ position: "absolute", left: 1, top: 4, width: 30, height: 22, background: palette.d, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 3, top: 2, width: 26, height: 20, background: palette.m, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 6, top: 3, width: 14, height: 10, background: palette.l, borderRadius: "50%" }} />
-      {/* Hint of leaves at bottom edge */}
-      <div style={{ position: "absolute", left: 4, top: 18, width: 4, height: 3, background: palette.m, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 24, top: 17, width: 4, height: 3, background: palette.m, borderRadius: "50%" }} />
-    </div>
-  );
-}
-
-function Fence() {
-  // Wood-plank fence. Grass behind, then two horizontal rails plus three
-  // upright posts so the lattice reads even at this small size.
-  return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <Grass v={0} />
-      {/* Horizontal rails */}
-      <div style={{ position: "absolute", left: 0, top: 9, width: TILE, height: 4, background: "linear-gradient(180deg, #b8895a 0%, #8c6435 100%)", boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.3)" }} />
-      <div style={{ position: "absolute", left: 0, top: 20, width: TILE, height: 4, background: "linear-gradient(180deg, #b8895a 0%, #8c6435 100%)", boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.3)" }} />
-      {/* Posts — pointed tops */}
-      <Post x={4} />
-      <Post x={14} />
-      <Post x={24} />
-    </div>
-  );
-}
-
-function Post({ x }: { x: number }) {
-  return (
-    <>
-      <div style={{ position: "absolute", left: x, top: 4, width: 4, height: 24, background: "linear-gradient(90deg, #5b3a1d 0%, #7a5b30 50%, #5b3a1d 100%)" }} />
-      <div style={{ position: "absolute", left: x, top: 4, width: 4, height: 2, background: "#5b3a1d", clipPath: "polygon(0 100%, 50% 0, 100% 100%)" }} />
-    </>
-  );
-}
-
-function Water({ v }: { v: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background:
-          "linear-gradient(180deg, #4ea0e8 0%, #2563eb 60%, #1e40af 100%)",
-        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.3), inset 1px 1px 0 rgba(255,255,255,0.15)",
-      }}
-    >
-      {/* Ripples — animated horizontal highlights. Three variants offset the
-          pattern so a 2×2 pond doesn't look like a tiled repeat. */}
-      {v === 0 && (
-        <>
-          <Ripple x={4} y={8} w={10} />
-          <Ripple x={16} y={20} w={8} delay={0.5} />
-        </>
-      )}
-      {v === 1 && (
-        <>
-          <Ripple x={8} y={14} w={12} delay={0.3} />
-          <Ripple x={2} y={22} w={6} />
-        </>
-      )}
-      {v === 2 && (
-        <>
-          <Ripple x={14} y={6} w={8} delay={0.7} />
-          <Ripple x={6} y={18} w={10} delay={0.2} />
-        </>
-      )}
-      <style jsx>{`
-        @keyframes rippleSlide {
-          0%, 100% { transform: translateX(0); opacity: 0.6; }
-          50% { transform: translateX(3px); opacity: 1; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function Ripple({ x, y, w, delay = 0 }: { x: number; y: number; w: number; delay?: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute", left: x, top: y, width: w, height: 1,
-        background: "rgba(255,255,255,0.7)", borderRadius: 1,
-        animation: `rippleSlide 2.4s ease-in-out ${delay}s infinite`,
-      }}
-    />
-  );
-}
-
-function Fountain() {
-  // Stone fountain centrepiece — masonry plinth, tiered basin with a
-  // central spout, water arc beads, splash droplets. Sits inside a water
-  // tile so the ring around the plinth reads as the pool.
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background:
-          "linear-gradient(180deg, #4ea0e8 0%, #2563eb 60%, #1e40af 100%)",
-        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.3), inset 1px 1px 0 rgba(255,255,255,0.15)",
-        overflow: "visible",
-      }}
-    >
-      {/* Pool ripples */}
-      <div style={{ position: "absolute", left: 3, top: 26, width: 8, height: 1, background: "rgba(255,255,255,0.6)", borderRadius: 1 }} />
-      <div style={{ position: "absolute", left: 22, top: 26, width: 7, height: 1, background: "rgba(255,255,255,0.4)", borderRadius: 1 }} />
-      {/* Stone plinth — three stacked rectangles for a tiered look */}
-      <div style={{ position: "absolute", left: 8, top: 18, width: 16, height: 6, background: "linear-gradient(180deg, #d4d4d4 0%, #737373 100%)", border: "1.5px solid #404040", borderRadius: 2, boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.5)" }}>
-        {/* Brick lines on the base */}
-        <div style={{ position: "absolute", left: "33%", top: 0, width: 1, height: 4, background: "rgba(0,0,0,0.35)" }} />
-        <div style={{ position: "absolute", left: "66%", top: 0, width: 1, height: 4, background: "rgba(0,0,0,0.35)" }} />
-      </div>
-      <div style={{ position: "absolute", left: 11, top: 13, width: 10, height: 6, background: "linear-gradient(180deg, #e5e5e5 0%, #a1a1aa 100%)", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
-      <div style={{ position: "absolute", left: 13, top: 8, width: 6, height: 6, background: "linear-gradient(180deg, #f1f5f9 0%, #94a3b8 100%)", border: "1.5px solid #404040", borderRadius: "3px 3px 1px 1px" }} />
-      {/* Cap dome */}
-      <div style={{ position: "absolute", left: 14, top: 6, width: 4, height: 3, background: "#475569", borderRadius: "50% 50% 0 0", border: "1px solid #1f2937" }} />
-      {/* Water arc — three beads forming a column spray */}
-      <div style={{ position: "absolute", left: 15, top: -2, width: 2, height: 3, background: "#bae6fd", borderRadius: "50%", boxShadow: "0 0 3px #7dd3fc", animation: "fountainSpout 1.6s ease-in-out infinite" }} />
-      <div style={{ position: "absolute", left: 15, top: 1, width: 2, height: 3, background: "#7dd3fc", borderRadius: "50%", animation: "fountainSpout 1.6s ease-in-out infinite 0.15s" }} />
-      <div style={{ position: "absolute", left: 15, top: 4, width: 2, height: 3, background: "#38bdf8", borderRadius: "50%", animation: "fountainSpout 1.6s ease-in-out infinite 0.3s" }} />
-      {/* Side splash droplets */}
-      <div style={{ position: "absolute", left: 6, top: 6, width: 2, height: 2, background: "#bae6fd", borderRadius: "50%", animation: "fountainSpray 1.6s ease-in-out infinite" }} />
-      <div style={{ position: "absolute", left: 24, top: 8, width: 2, height: 2, background: "#bae6fd", borderRadius: "50%", animation: "fountainSpray 1.6s ease-in-out infinite 0.4s" }} />
-      <style jsx>{`
-        @keyframes fountainSpout {
-          0%, 100% { transform: translateY(0); opacity: 0.8; }
-          50% { transform: translateY(-3px); opacity: 1; }
-        }
-        @keyframes fountainSpray {
-          0% { transform: translate(0, 0); opacity: 1; }
-          100% { transform: translate(var(--dx, 2px), 4px); opacity: 0; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function Flowers({ v }: { v: number }) {
-  // 5-petal flowers in three colour-mix palettes. Each tile has a tight
-  // cluster of 3 blooms with a yellow centre and stems trailing down.
-  const palette = v === 0
-    ? ["#ef4444", "#ec4899", "#fb923c"]
-    : v === 1
-    ? ["#fbbf24", "#facc15", "#fde047"]
-    : ["#a855f7", "#c084fc", "#60a5fa"];
-  const positions = [
-    { x: 6, y: 6, c: palette[0] },
-    { x: 18, y: 10, c: palette[1] },
-    { x: 11, y: 20, c: palette[2] },
-  ];
-  return (
-    <>
-      {positions.map((p, i) => (
-        <Bloom key={i} x={p.x} y={p.y} color={p.c} />
-      ))}
-    </>
-  );
-}
-
-function Bloom({ x, y, color }: { x: number; y: number; color: string }) {
-  // 5-petal flower drawn as 4 outer petals + center disc.
-  return (
-    <div style={{ position: "absolute", left: x, top: y, width: 8, height: 8 }}>
-      {/* Stem */}
-      <div style={{ position: "absolute", left: 3, top: 6, width: 1, height: 4, background: "#2f6b30" }} />
-      {/* Petals */}
-      <div style={{ position: "absolute", left: 2, top: 0, width: 3, height: 3, background: color, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 0, top: 2, width: 3, height: 3, background: color, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 4, top: 2, width: 3, height: 3, background: color, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 1, top: 4, width: 3, height: 3, background: color, borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 3, top: 4, width: 3, height: 3, background: color, borderRadius: "50%" }} />
-      {/* Center */}
-      <div style={{ position: "absolute", left: 2, top: 2, width: 3, height: 3, background: "#fef3c7", borderRadius: "50%" }} />
-    </div>
-  );
-}
-
-function Sign() {
-  // Wooden plaque on a post with text-line scratches and shading.
-  return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <Grass v={2} />
-      {/* Post */}
-      <div style={{ position: "absolute", left: 14, top: 16, width: 4, height: 14, background: "linear-gradient(90deg, #5b3a1d, #7a5b30, #5b3a1d)" }} />
-      {/* Plaque */}
-      <div
-        style={{
-          position: "absolute", left: 4, top: 4, width: 24, height: 14,
-          background: "linear-gradient(180deg, #d4a574, #a8895a)",
-          border: "1.5px solid #5b3a1d", borderRadius: 2,
-          boxShadow: "0 2px 0 rgba(0,0,0,0.3)",
-        }}
-      >
-        {/* Text scratches */}
-        <div style={{ position: "absolute", left: 3, top: 3, width: 18, height: 1, background: "#5b3a1d" }} />
-        <div style={{ position: "absolute", left: 3, top: 6, width: 14, height: 1, background: "#5b3a1d" }} />
-        <div style={{ position: "absolute", left: 3, top: 9, width: 16, height: 1, background: "#5b3a1d" }} />
-      </div>
-      {/* Nail heads */}
-      <div style={{ position: "absolute", left: 6, top: 5, width: 2, height: 2, background: "#4a2f1a", borderRadius: "50%" }} />
-      <div style={{ position: "absolute", left: 24, top: 5, width: 2, height: 2, background: "#4a2f1a", borderRadius: "50%" }} />
-    </div>
-  );
-}
-
-// Floating per-door label so the player can read where each building leads
-// before they walk in. Rendered as a flat group above the building. Keeps
-// the map self-documenting. When a questTarget is provided, the matching
-// door also gets a bouncing arrow + amber glow so the player can see at a
-// glance where the next objective sends them.
 function DoorLabels({ questTarget }: { questTarget: string | null }) {
   const doors = useMemo(() => {
     const out: { x: number; y: number; sym: string; door: DoorInfo }[] = [];
@@ -978,7 +560,7 @@ function DoorLabels({ questTarget }: { questTarget: string | null }) {
               width: TILE * 4,
               textAlign: "center",
               pointerEvents: "none",
-              zIndex: 5,
+              zIndex: 6,
             }}
           >
             {hot && (
@@ -1015,4 +597,158 @@ function DoorLabels({ questTarget }: { questTarget: string | null }) {
       `}</style>
     </>
   );
+}
+
+// --- Tile sprite generators -----------------------------------------------
+// Each function returns an SVG data URI for one TILE-sized cell. Computed
+// once at module load and reused as background-image — the browser caches
+// the URI so repeated tiles share GPU texture memory.
+
+function uri(svg: string): string {
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+const T = TILE;
+
+// Cohesive palette — grass tones and earth tones share warm undertones so
+// the seam between grass and path is much softer than before.
+const GRASS_BASE = "#5e9e54";
+const GRASS_MID  = "#4d8a44";
+const GRASS_DARK = "#3d7338";
+const PATH_BASE  = "#c9a87c";
+const PATH_MID   = "#b8946a";
+const PATH_DARK  = "#a17e58";
+const PATH_EDGE  = "#7a9764"; // grass-tinted edge for soft tile blending
+
+function svgGrass(v: number): string {
+  // Soft grass with edge feathering so adjacent grass tiles read as a
+  // single field rather than a grid.
+  const tufts =
+    v === 0 ? `<circle cx='8' cy='20' r='1' fill='${GRASS_DARK}'/><circle cx='22' cy='10' r='1' fill='${GRASS_DARK}'/><circle cx='16' cy='26' r='1' fill='${GRASS_DARK}'/>` :
+    v === 1 ? `<circle cx='6' cy='8' r='1' fill='${GRASS_DARK}'/><circle cx='24' cy='22' r='1' fill='${GRASS_DARK}'/><circle cx='14' cy='14' r='0.8' fill='#9ca3af'/>` :
+              `<circle cx='12' cy='6' r='1' fill='${GRASS_DARK}'/><circle cx='4' cy='26' r='1' fill='${GRASS_DARK}'/><circle cx='28' cy='18' r='1' fill='${GRASS_DARK}'/>`;
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<defs><radialGradient id='g${v}' cx='50%' cy='50%' r='75%'><stop offset='0%' stop-color='${GRASS_BASE}'/><stop offset='100%' stop-color='${GRASS_MID}'/></radialGradient></defs>` +
+    `<rect width='${T}' height='${T}' fill='url(#g${v})'/>` +
+    tufts +
+    `</svg>`
+  );
+}
+
+function svgPath(v: number): string {
+  // Path with a green-tinted feather around the rim so the brown edges
+  // blend into surrounding grass instead of cutting a hard rectangle.
+  const speckles =
+    v === 0 ? `<circle cx='8' cy='10' r='1' fill='${PATH_DARK}'/><circle cx='22' cy='16' r='1' fill='${PATH_DARK}'/><circle cx='14' cy='24' r='1' fill='${PATH_DARK}'/>` :
+    v === 1 ? `<circle cx='6' cy='22' r='1' fill='${PATH_DARK}'/><circle cx='24' cy='8' r='1' fill='${PATH_DARK}'/><circle cx='16' cy='14' r='1' fill='${PATH_DARK}'/>` :
+              `<circle cx='10' cy='6' r='1' fill='${PATH_DARK}'/><circle cx='26' cy='24' r='1' fill='${PATH_DARK}'/><circle cx='4' cy='14' r='1' fill='${PATH_DARK}'/>`;
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<rect width='${T}' height='${T}' fill='${PATH_EDGE}'/>` + // outer feather ring
+    `<rect x='2' y='2' width='${T - 4}' height='${T - 4}' fill='${PATH_BASE}'/>` +
+    `<rect x='2' y='2' width='${T - 4}' height='${T - 4}' fill='url(#pg${v})' fill-opacity='1'/>` +
+    `<defs><linearGradient id='pg${v}' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='${PATH_BASE}'/><stop offset='100%' stop-color='${PATH_MID}'/></linearGradient></defs>` +
+    speckles +
+    `</svg>`
+  );
+}
+
+function svgFence(): string {
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<rect width='${T}' height='${T}' fill='${GRASS_MID}'/>` +
+    `<rect y='9' width='${T}' height='4' fill='#a8895a'/>` +
+    `<rect y='20' width='${T}' height='4' fill='#a8895a'/>` +
+    `<rect x='4' y='4' width='4' height='24' fill='#7a5b30'/>` +
+    `<rect x='14' y='4' width='4' height='24' fill='#7a5b30'/>` +
+    `<rect x='24' y='4' width='4' height='24' fill='#7a5b30'/>` +
+    `</svg>`
+  );
+}
+
+function svgWater(v: number): string {
+  const ripples =
+    v === 0 ? `<rect x='4' y='8' width='10' height='1' fill='rgba(255,255,255,0.55)'/><rect x='16' y='20' width='8' height='1' fill='rgba(255,255,255,0.35)'/>` :
+    v === 1 ? `<rect x='8' y='14' width='12' height='1' fill='rgba(255,255,255,0.45)'/><rect x='2' y='22' width='6' height='1' fill='rgba(255,255,255,0.35)'/>` :
+              `<rect x='14' y='6' width='8' height='1' fill='rgba(255,255,255,0.4)'/><rect x='6' y='18' width='10' height='1' fill='rgba(255,255,255,0.5)'/>`;
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<defs><linearGradient id='w${v}' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='#4ea0e8'/><stop offset='100%' stop-color='#1e40af'/></linearGradient></defs>` +
+    `<rect width='${T}' height='${T}' fill='url(#w${v})'/>` +
+    ripples +
+    `</svg>`
+  );
+}
+
+function svgTree(v: number): string {
+  const palette =
+    v === 0 ? { d: "#1b5e20", m: "#2e7d32", l: "#4caf50" } :
+    v === 1 ? { d: "#1a4d2e", m: "#2a6b3f", l: "#3f9c55" } :
+              { d: "#0f3f1f", m: "#1f5530", l: "#36844a" };
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<ellipse cx='16' cy='28' rx='10' ry='2.5' fill='rgba(0,0,0,0.3)'/>` +
+    `<rect x='13' y='20' width='6' height='8' fill='#6b4423'/>` +
+    `<rect x='17' y='20' width='1' height='8' fill='#4a2f1a'/>` +
+    `<circle cx='16' cy='14' r='12' fill='${palette.d}'/>` +
+    `<circle cx='16' cy='13' r='11' fill='${palette.m}'/>` +
+    `<circle cx='13' cy='10' r='6' fill='${palette.l}'/>` +
+    `</svg>`
+  );
+}
+
+function svgFlowers(v: number): string {
+  const palette =
+    v === 0 ? ["#ef4444", "#ec4899", "#fb923c"] :
+    v === 1 ? ["#fbbf24", "#facc15", "#fde047"] :
+              ["#a855f7", "#c084fc", "#60a5fa"];
+  // 3 blooms with stems + petals
+  const bloom = (cx: number, cy: number, c: string) =>
+    `<line x1='${cx}' y1='${cy + 2}' x2='${cx}' y2='${cy + 6}' stroke='#2f6b30' stroke-width='1'/>` +
+    `<circle cx='${cx - 2}' cy='${cy}' r='2' fill='${c}'/>` +
+    `<circle cx='${cx + 2}' cy='${cy}' r='2' fill='${c}'/>` +
+    `<circle cx='${cx}' cy='${cy - 2}' r='2' fill='${c}'/>` +
+    `<circle cx='${cx}' cy='${cy + 2}' r='2' fill='${c}'/>` +
+    `<circle cx='${cx}' cy='${cy}' r='1.5' fill='#fef3c7'/>`;
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    bloom(9, 9, palette[0]) +
+    bloom(22, 13, palette[1]) +
+    bloom(14, 23, palette[2]) +
+    `</svg>`
+  );
+}
+
+function svgSign(): string {
+  return uri(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${T}' height='${T}'>` +
+    `<rect x='14' y='16' width='4' height='14' fill='#5b3a1d'/>` +
+    `<rect x='4' y='4' width='24' height='14' fill='#d4a574' stroke='#5b3a1d' stroke-width='1.5' rx='2'/>` +
+    `<rect x='7' y='7' width='18' height='1' fill='#5b3a1d'/>` +
+    `<rect x='7' y='10' width='14' height='1' fill='#5b3a1d'/>` +
+    `<rect x='7' y='13' width='16' height='1' fill='#5b3a1d'/>` +
+    `<circle cx='6' cy='6' r='1' fill='#4a2f1a'/>` +
+    `<circle cx='26' cy='6' r='1' fill='#4a2f1a'/>` +
+    `</svg>`
+  );
+}
+
+const GRASS_URIS  = [svgGrass(0), svgGrass(1), svgGrass(2)];
+const PATH_URIS   = [svgPath(0), svgPath(1), svgPath(2)];
+const WATER_URIS  = [svgWater(0), svgWater(1), svgWater(2)];
+const TREE_URIS   = [svgTree(0), svgTree(1), svgTree(2)];
+const FLOWER_URIS = [svgFlowers(0), svgFlowers(1), svgFlowers(2)];
+const FENCE_URI   = svgFence();
+const SIGN_URI    = svgSign();
+
+function shadeHex(hex: string, pct: number): string {
+  const c = hex.replace("#", "");
+  if (c.length < 6) return hex;
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  const f = pct / 100;
+  const adj = (n: number) => Math.max(0, Math.min(255, Math.round(n + (f > 0 ? (255 - n) * f : n * f))));
+  return `rgb(${adj(r)}, ${adj(g)}, ${adj(b)})`;
 }

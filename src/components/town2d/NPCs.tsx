@@ -187,11 +187,12 @@ function NPC({ def, onMove }: { def: NPCDef; onMove: (p: { x: number; y: number 
     <div
       style={{
         position: "absolute",
-        left: pos.x * TILE,
-        top: pos.y * TILE,
+        left: 0, top: 0,
         width: TILE,
         height: TILE,
-        transition: "left 320ms ease-out, top 320ms ease-out",
+        transform: `translate3d(${pos.x * TILE}px, ${pos.y * TILE}px, 0)`,
+        transition: "transform 320ms ease-out",
+        willChange: "transform",
         zIndex: pos.y + 2,
       }}
     >
