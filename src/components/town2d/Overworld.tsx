@@ -9,6 +9,7 @@ import {
   tileAt,
   isWalkable,
   doorAt,
+  signAt,
   buildingPaletteAt,
   isBuilding,
   isRoofCell,
@@ -41,9 +42,11 @@ const VIEW_PX_H = VIEW_H * TILE; // 576
 export default function Overworld({
   heldDir,
   onEnterDoor,
+  onReadSign,
 }: {
   heldDir: Dir | null;
   onEnterDoor: (door: DoorInfo) => void;
+  onReadSign: (lines: string[]) => void;
 }) {
   const [px, setPx] = useState(SPAWN.x); // tile-x at rest
   const [py, setPy] = useState(SPAWN.y);
@@ -123,6 +126,12 @@ export default function Overworld({
     if (door) {
       heldRef.current = null; // consume hold so it doesn't auto-retrigger
       onEnterDoor(door);
+      return;
+    }
+    const sign = signAt(tx, ty);
+    if (sign) {
+      heldRef.current = null;
+      onReadSign(sign);
       return;
     }
     if (!isWalkable(tx, ty)) return; // blocked — face only
@@ -250,11 +259,13 @@ function Cell({ x, y }: { x: number; y: number }) {
   const baseGround = sym === "," ? "#a16207" : sym === "f" ? "#65a30d" : "#3f7d3a";
 
   // Buildings: render as solid coloured blocks with a roof accent on the
-  // topmost row of the building.
+  // topmost row of the building and small window detailing on mid-tier
+  // walls so each building reads as more than a flat rectangle.
   if (isBuilding(x, y)) {
     const palette = buildingPaletteAt(x, y)!;
     const roof = isRoofCell(x, y);
     const door = doorAt(x, y);
+    const window = !door && !roof && variant(x, y) !== 0; // ~2/3 of mid cells
     return (
       <div
         style={{
@@ -264,26 +275,74 @@ function Cell({ x, y }: { x: number; y: number }) {
           width: TILE,
           height: TILE,
           background: door ? palette.door : palette.wall,
-          borderTop: roof ? `4px solid ${palette.roof}` : undefined,
+          borderTop: roof ? `5px solid ${palette.roof}` : undefined,
           boxShadow: door ? "inset 0 0 0 2px rgba(0,0,0,0.4)" : "inset 0 0 0 1px rgba(0,0,0,0.25)",
           zIndex: 1,
         }}
       >
-        {door && (
+        {roof && (
+          // Roof shingle pattern — a darker strip beneath the accent line
+          // so the roof reads as thickness rather than a single border.
           <div
             style={{
               position: "absolute",
-              inset: 4,
-              borderRadius: 3,
-              background: "rgba(0,0,0,0.55)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 9,
+              background: "rgba(0,0,0,0.25)",
+            }}
+          />
+        )}
+        {window && (
+          <div
+            style={{
+              position: "absolute",
+              left: 8,
+              top: 9,
+              width: TILE - 16,
+              height: 11,
+              background: "#facc15",
+              border: "1.5px solid #1f2937",
+              borderRadius: 2,
+              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.4)",
             }}
           >
-            {door.icon}
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "#1f2937" }} />
+            <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "#1f2937" }} />
           </div>
+        )}
+        {door && (
+          <>
+            {/* Awning stripe to make the door pop */}
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 4,
+                background: palette.roof,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 5,
+                right: 5,
+                top: 7,
+                bottom: 4,
+                borderRadius: "4px 4px 1px 1px",
+                background: "rgba(0,0,0,0.7)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+              }}
+            >
+              {door.icon}
+            </div>
+          </>
         )}
       </div>
     );

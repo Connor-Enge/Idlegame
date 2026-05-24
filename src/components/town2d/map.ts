@@ -140,6 +140,24 @@ export function doorAt(x: number, y: number): DoorInfo | null {
   return DOORS[sym] ?? null;
 }
 
+// Sign post text — the player bumps into a sign to read it. Keyed by tile
+// coords so two signs in different spots can carry different messages.
+export const SIGNS: Record<string, string[]> = {
+  "13,12": [
+    "Welcome to Paradise — population: you.",
+    "Tap a building's door to walk inside. Cash bills sometimes appear on the grass — step on one to grab it.",
+    "When your net worth crosses $1M, retire to bank Legacy Points for your next life.",
+  ],
+  "14,12": [
+    "Quest tracker is at the bottom of the screen. Follow it for a guided start.",
+  ],
+};
+
+export function signAt(x: number, y: number): string[] | null {
+  if (tileAt(x, y) !== "s") return null;
+  return SIGNS[`${x},${y}`] ?? ["A weathered sign. The writing's faded."];
+}
+
 // Returns the palette for any wall or door tile (so the renderer can colour
 // the building consistently across all its cells), else null.
 export function buildingPaletteAt(x: number, y: number): BuildingPalette | null {

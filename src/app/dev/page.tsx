@@ -13,6 +13,7 @@ import { canRetire, legacyGain } from "@/lib/game/progression";
 import { currentQuest } from "@/components/town2d/quests";
 import Dpad from "@/components/town2d/Dpad";
 import BuildingModal from "@/components/town2d/BuildingModal";
+import Dialog from "@/components/town2d/Dialog";
 import type { Dir } from "@/components/town2d/Sprite";
 import type { DoorInfo } from "@/components/town2d/map";
 
@@ -25,6 +26,7 @@ export default function TownPage() {
   const run = useGame((s) => s.run);
   const [heldDir, setHeldDir] = useState<Dir | null>(null);
   const [activeDoor, setActiveDoor] = useState<DoorInfo | null>(null);
+  const [dialogLines, setDialogLines] = useState<string[] | null>(null);
 
   const quest = currentQuest(state);
   const retirable = state ? canRetire(state) : false;
@@ -52,7 +54,7 @@ export default function TownPage() {
       {/* Overworld viewport — fixed-size, centered. The viewport is smaller
           than the full map; camera scrolls inside it. */}
       <div className="flex flex-1 items-center justify-center overflow-hidden">
-        <Overworld heldDir={heldDir} onEnterDoor={setActiveDoor} />
+        <Overworld heldDir={heldDir} onEnterDoor={setActiveDoor} onReadSign={setDialogLines} />
       </div>
 
       {/* Bottom row: menu link + quest tracker. */}
@@ -105,6 +107,15 @@ export default function TownPage() {
 
       {/* Building modal — sits above everything. Open while a door is set. */}
       {activeDoor && <BuildingModal door={activeDoor} onClose={() => setActiveDoor(null)} />}
+
+      {/* Dialog box — sign + NPC text. Lives in front of the world but
+          beneath the building modal so entering a building cleanly hides it. */}
+      {dialogLines && (
+        <Dialog
+          lines={dialogLines.map((text) => ({ text }))}
+          onClose={() => setDialogLines(null)}
+        />
+      )}
     </div>
   );
 }
