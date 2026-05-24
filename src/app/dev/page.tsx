@@ -55,7 +55,12 @@ export default function TownPage() {
       {/* Overworld viewport — fixed-size, centered. The viewport is smaller
           than the full map; camera scrolls inside it. */}
       <div className="flex flex-1 items-center justify-center overflow-hidden">
-        <Overworld heldDir={heldDir} onEnterDoor={setActiveDoor} onDialog={setDialog} />
+        <Overworld
+          heldDir={heldDir}
+          onEnterDoor={setActiveDoor}
+          onDialog={setDialog}
+          questTarget={quest?.step.target ?? null}
+        />
       </div>
 
       {/* Bottom row: menu link + quest tracker. */}

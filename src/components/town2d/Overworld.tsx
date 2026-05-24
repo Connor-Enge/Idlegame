@@ -72,10 +72,15 @@ export default function Overworld({
   heldDir,
   onEnterDoor,
   onDialog,
+  questTarget,
 }: {
   heldDir: Dir | null;
   onEnterDoor: (door: DoorInfo) => void;
   onDialog: (payload: DialogPayload) => void;
+  // Door symbol key (e.g. "J") whose door should show a quest indicator,
+  // or null for none. The Overworld looks up the door's tile coords from
+  // the map and floats an arrow above it.
+  questTarget: string | null;
 }) {
   const npcsRef = useRef<NPCsHandle>(null);
   // Time of day, persists for the page lifetime. Starts at noon so the first
@@ -255,7 +260,7 @@ export default function Overworld({
         {/* Door labels — float above each door so the player can see where
             they're heading. zIndex puts them under the player when they're
             standing in front of the door. */}
-        <DoorLabels />
+        <DoorLabels questTarget={questTarget} />
 
         {/* Collection floaters — fade-up "+$N" indicators at the pickup
             tile. Lifetimes managed by the parent's setTimeout. */}
@@ -501,40 +506,70 @@ function Sign() {
 
 // Floating per-door label so the player can read where each building leads
 // before they walk in. Rendered as a flat group above the building. Keeps
-// the map self-documenting.
-function DoorLabels() {
+// the map self-documenting. When a questTarget is provided, the matching
+// door also gets a bouncing arrow + amber glow so the player can see at a
+// glance where the next objective sends them.
+function DoorLabels({ questTarget }: { questTarget: string | null }) {
   const doors = useMemo(() => {
-    const out: { x: number; y: number; door: DoorInfo }[] = [];
+    const out: { x: number; y: number; sym: string; door: DoorInfo }[] = [];
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
-        const d = DOORS[tileAt(x, y)];
-        if (d) out.push({ x, y, door: d });
+        const sym = tileAt(x, y);
+        const d = DOORS[sym];
+        if (d) out.push({ x, y, sym, door: d });
       }
     }
     return out;
   }, []);
   return (
     <>
-      {doors.map(({ x, y, door }) => (
-        <div
-          key={door.id}
-          style={{
-            position: "absolute",
-            left: x * TILE - TILE * 1.5,
-            top: y * TILE - 30,
-            width: TILE * 4,
-            textAlign: "center",
-            fontSize: 10,
-            fontWeight: 700,
-            color: "white",
-            textShadow: "0 1px 2px rgba(0,0,0,0.9)",
-            pointerEvents: "none",
-            zIndex: 5,
-          }}
-        >
-          {door.label}
-        </div>
-      ))}
+      {doors.map(({ x, y, sym, door }) => {
+        const hot = sym === questTarget;
+        return (
+          <div
+            key={door.id}
+            style={{
+              position: "absolute",
+              left: x * TILE - TILE * 1.5,
+              top: y * TILE - 38,
+              width: TILE * 4,
+              textAlign: "center",
+              pointerEvents: "none",
+              zIndex: 5,
+            }}
+          >
+            {hot && (
+              <div
+                style={{
+                  fontSize: 18,
+                  color: "#fbbf24",
+                  textShadow: "0 0 6px #fbbf24, 0 1px 2px #000",
+                  animation: "questBob 1s ease-in-out infinite",
+                  marginBottom: -2,
+                }}
+              >
+                ▼
+              </div>
+            )}
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: hot ? "#fde68a" : "white",
+                textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+              }}
+            >
+              {door.label}
+            </div>
+          </div>
+        );
+      })}
+      <style jsx>{`
+        @keyframes questBob {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(6px); }
+        }
+      `}</style>
     </>
   );
 }
