@@ -7,6 +7,17 @@
 
 export type StationGeometry = "machine" | "desk" | "screen" | "cubicle" | "pedestal";
 
+// Some stations can be played directly in 3D mode without routing to the full
+// menu page. For now this is only the casino — pure-RNG games have no
+// minigame component so a single button press = a single spin at a default
+// wager. The menu page remains the deep / configurable surface; in-world is
+// the casual quick-play surface.
+export type StationAction =
+  | { kind: "slots"; wager: number }
+  | { kind: "coinflip"; wager: number; callHeads: boolean }
+  | { kind: "dice"; wager: number; target: number }
+  | { kind: "roulette"; wager: number; bet: "red" | "black" };
+
 export interface Station {
   id: string;
   pos: [number, number];
@@ -18,6 +29,8 @@ export interface Station {
   // All current interiors route to a single feature page; future work could
   // deep-link to a specific game/asset via query params.
   route: string;
+  // If set, the dev page fires this action in-world instead of routing.
+  action?: StationAction;
 }
 
 export interface InteriorConfig {
@@ -47,11 +60,11 @@ export const CASINO: InteriorConfig = {
     { pos: [0, 6, -4], color: "#a855f7", intensity: 0.9, distance: 18 },
   ],
   stations: [
-    { id: "slots", pos: [-6, -4], label: "Slots", icon: "🎰", color: "#a16207", geometry: "machine", route: "/gambling" },
-    { id: "roulette", pos: [-3, -4], label: "Roulette", icon: "🎡", color: "#a16207", geometry: "machine", route: "/gambling" },
+    { id: "slots", pos: [-6, -4], label: "Slots", icon: "🎰", color: "#a16207", geometry: "machine", route: "/gambling", action: { kind: "slots", wager: 50 } },
+    { id: "roulette", pos: [-3, -4], label: "Roulette (Red)", icon: "🎡", color: "#a16207", geometry: "machine", route: "/gambling", action: { kind: "roulette", wager: 50, bet: "red" } },
     { id: "blackjack", pos: [0, -4], label: "Blackjack", icon: "🃏", color: "#a16207", geometry: "machine", route: "/gambling" },
-    { id: "dice", pos: [3, -4], label: "Dice", icon: "🎲", color: "#a16207", geometry: "machine", route: "/gambling" },
-    { id: "coinflip", pos: [6, -4], label: "Coin Flip", icon: "🪙", color: "#a16207", geometry: "machine", route: "/gambling" },
+    { id: "dice", pos: [3, -4], label: "Dice (Under 50)", icon: "🎲", color: "#a16207", geometry: "machine", route: "/gambling", action: { kind: "dice", wager: 50, target: 50 } },
+    { id: "coinflip", pos: [6, -4], label: "Coin Flip", icon: "🪙", color: "#a16207", geometry: "machine", route: "/gambling", action: { kind: "coinflip", wager: 50, callHeads: true } },
   ],
   exitPos: [0, 8],
   bounds: [-11, 11, -7, 11],

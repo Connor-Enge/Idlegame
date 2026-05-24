@@ -14,10 +14,19 @@ import { money } from "@/lib/format";
 import { canRetire, legacyGain } from "@/lib/game/progression";
 import Joystick from "@/components/town/Joystick";
 import type { Spot } from "@/components/town/TownScene";
-import { INTERIORS } from "@/components/town/interiors";
+import { INTERIORS, type StationAction } from "@/components/town/interiors";
 import { currentQuest } from "@/components/town/quests";
 
 const TownScene = dynamic(() => import("@/components/town/TownScene"), { ssr: false });
+
+function gambleIcon(kind: StationAction["kind"]): string {
+  switch (kind) {
+    case "slots": return "🎰";
+    case "coinflip": return "🪙";
+    case "dice": return "🎲";
+    case "roulette": return "🎡";
+  }
+}
 
 // Direct cash bump used by in-world reward sources (cash pickups, lemonade
 // stand). Skips the action layer + toast — these are decorative, not
@@ -78,7 +87,46 @@ export default function TownPage() {
     }
     const interior = INTERIORS[mode];
     const station = interior?.stations.find((s) => s.id === target);
-    if (station) router.push(station.route);
+    if (!station) return;
+    if (station.action && state) {
+      fireStationAction(station.action);
+      return;
+    }
+    router.push(station.route);
+  }
+
+  // In-world casino spin. Validates wager, fires the gamble action through
+  // the store (silent — we render our own floater), and surfaces the result.
+  function fireStationAction(action: StationAction) {
+    if (!state) return;
+    if (state.stats.cash < action.wager) {
+      showNote(`Need ${money(action.wager)}`, "bad");
+      return;
+    }
+    let result;
+    switch (action.kind) {
+      case "slots":
+        result = gameActions.gamble(state, "slots", action.wager);
+        break;
+      case "coinflip":
+        result = gameActions.gamble(state, "coinflip", action.wager, { callHeads: action.callHeads });
+        break;
+      case "dice":
+        result = gameActions.gamble(state, "dice", action.wager, { target: action.target });
+        break;
+      case "roulette":
+        result = gameActions.gamble(state, "roulette", action.wager, { bet: { type: action.bet } });
+        break;
+    }
+    run(result, { silent: true });
+    const g = result.gamble;
+    if (!g) return;
+    if (g.won) {
+      const profit = g.payout - g.wager;
+      showNote(`${gambleIcon(action.kind)} +${money(profit)} (${g.detail})`, "good");
+    } else {
+      showNote(`${gambleIcon(action.kind)} -${money(g.wager)} (${g.detail})`, "bad");
+    }
   }
   function onLemonadePour(cash: number, quality: "perfect" | "good" | "weak" | "spill") {
     if (cash > 0) {
@@ -98,7 +146,11 @@ export default function TownPage() {
       promptLabel = `🚪 Exit ${interior.title}`;
     } else {
       const st = interior.stations.find((s) => s.id === nearestInterior);
-      if (st) promptLabel = `▶ ${st.icon} ${st.label}`;
+      if (st) {
+        promptLabel = st.action
+          ? `${st.icon} Play ${money(st.action.wager)}`
+          : `▶ ${st.icon} ${st.label}`;
+      }
     }
   }
 
