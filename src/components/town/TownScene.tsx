@@ -1,24 +1,26 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Sky } from "@react-three/drei";
+import { Sky, Text } from "@react-three/drei";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import Player, { type PlayerHandle } from "./Player";
 import Building from "./Building";
 import NPC from "./NPC";
 import { Fence, Lamps, Trees } from "./Decor";
+import { MovingCar, ParkedCars } from "./Vehicles";
+import { CashPickups } from "./CashPickup";
+import CasinoInterior from "./CasinoInterior";
 
-// Every visitable location maps to one of the existing menu routes. Position
-// is (x, z) on the ground plane. Heights / colours / labels just for vibes.
 export interface Spot {
   id: string;
   label: string;
   emoji: string;
   color: string;
-  position: [number, number]; // (x, z)
+  position: [number, number];
   size: [number, number, number];
   route: string;
+  interior?: "casino"; // if set, "Enter" switches to that interior scene
 }
 
 export const SPOTS: Spot[] = [
@@ -26,18 +28,15 @@ export const SPOTS: Spot[] = [
   { id: "business", label: "Businesses", emoji: "🏢", color: "#a855f7", position: [-14, 8], size: [6, 10, 6], route: "/business" },
   { id: "invest", label: "Markets", emoji: "📈", color: "#22c55e", position: [0, -16], size: [5, 8, 5], route: "/invest" },
   { id: "realestate", label: "Real Estate", emoji: "🏘️", color: "#f59e0b", position: [14, -10], size: [5, 6, 5], route: "/realestate" },
-  { id: "gambling", label: "Casino", emoji: "🎰", color: "#ef4444", position: [14, 8], size: [6, 9, 6], route: "/gambling" },
+  { id: "gambling", label: "Casino", emoji: "🎰", color: "#ef4444", position: [14, 8], size: [6, 9, 6], route: "/gambling", interior: "casino" },
   { id: "economy", label: "City Hall", emoji: "🌍", color: "#94a3b8", position: [0, 12], size: [6, 8, 6], route: "/economy" },
   { id: "goals", label: "Trophies", emoji: "🏆", color: "#eab308", position: [-7, 18], size: [4, 5, 4], route: "/goals" },
   { id: "leaderboard", label: "Leaderboard", emoji: "📊", color: "#ec4899", position: [7, 18], size: [4, 5, 4], route: "/leaderboard" },
 ];
 
-const PROXIMITY = 5.5; // metres at which the "press to enter" prompt triggers
-const PLAYER_RADIUS = 0.55; // capsule radius — used for building collision
+const PROXIMITY = 5.5;
+const PLAYER_RADIUS = 0.55;
 
-// AABB collision: push the player out of any building footprint they
-// stepped into, along whichever axis has the smaller penetration. Works on
-// XZ; y is ignored since the player can't fly.
 function resolveBuildingCollisions(pos: THREE.Vector3) {
   for (const s of SPOTS) {
     const halfW = s.size[0] / 2 + PLAYER_RADIUS;
@@ -55,22 +54,29 @@ function resolveBuildingCollisions(pos: THREE.Vector3) {
   }
 }
 
-// Inside the Canvas — handles per-frame movement + camera follow. Reads the
-// latest joystick vector via the moveRef ref the parent owns.
+// Outdoor world — ground, sky, day/night cycle, buildings, NPCs, vehicles,
+// trees, lamps, cash pickups, tutorial NPC, player.
 function World({
   moveRef,
   onNearestChange,
-  setReadyToEnter,
 }: {
   moveRef: React.MutableRefObject<{ x: number; y: number }>;
   onNearestChange: (spot: Spot | null) => void;
-  setReadyToEnter: (route: string | null) => void;
 }) {
   const playerRef = useRef<PlayerHandle>(null);
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
   const targetCam = useRef(new THREE.Vector3());
-  // Cache last-reported nearest so we don't churn React state.
   const nearestId = useRef<string | null>(null);
+  const playerPos = useRef(new THREE.Vector3(0, 0, 12));
+
+  // Day-night clock — one full cycle = 180s of real time. tod ∈ [0..1], we
+  // map it to a sun angle. sunUp = max(0, sin(angle)) so noon is full
+  // brightness, midnight is zero, dawn / dusk are smooth ramps.
+  const tod = useRef(0.45);
+  const sunPos = useRef(new THREE.Vector3(100, 50, 50));
+  const dirLightRef = useRef<THREE.DirectionalLight>(null);
+  const ambLightRef = useRef<THREE.AmbientLight>(null);
+  const [lampBrightness, setLampBrightness] = useState(0.3);
 
   useEffect(() => {
     camera.position.set(0, 16, 24);
@@ -81,22 +87,19 @@ function World({
     if (!playerRef.current) return;
     const pos = playerRef.current.position;
 
-    // Apply joystick as world-space x/z movement. y stays on the ground.
     const speed = 8;
     pos.x += moveRef.current.x * speed * dt;
     pos.z += moveRef.current.y * speed * dt;
-    // Push out of any building we stepped into.
     resolveBuildingCollisions(pos);
-    // Soft world bounds so the avatar can't wander off into the void.
     pos.x = THREE.MathUtils.clamp(pos.x, -29, 29);
     pos.z = THREE.MathUtils.clamp(pos.z, -29, 29);
+    playerPos.current.copy(pos);
 
-    // Camera follow — sits behind-and-above the player, smoothed.
     targetCam.current.set(pos.x, pos.y + 12, pos.z + 16);
     camera.position.lerp(targetCam.current, 1 - Math.pow(0.001, dt));
     camera.lookAt(pos.x, pos.y + 1, pos.z);
 
-    // Proximity check — find the nearest building within PROXIMITY.
+    // Proximity → nearest building.
     let best: Spot | null = null;
     let bestD = PROXIMITY;
     for (const s of SPOTS) {
@@ -107,15 +110,41 @@ function World({
     if (id !== nearestId.current) {
       nearestId.current = id;
       onNearestChange(best);
-      setReadyToEnter(best?.route ?? null);
     }
+
+    // Day-night clock.
+    tod.current = (tod.current + dt / 180) % 1;
+    const angle = tod.current * Math.PI * 2 - Math.PI / 2;
+    const sx = Math.cos(angle) * 100;
+    const sy = Math.sin(angle) * 100;
+    sunPos.current.set(sx, sy, 30);
+    const sunUp = Math.max(0, Math.sin(angle));
+    const night = 1 - sunUp;
+    if (dirLightRef.current) {
+      dirLightRef.current.position.set(sx * 0.2, Math.max(2, sy * 0.3), 10);
+      dirLightRef.current.intensity = sunUp;
+    }
+    if (ambLightRef.current) {
+      ambLightRef.current.intensity = 0.18 + sunUp * 0.5;
+    }
+    // Tint the scene background between sky-blue and deep-night, so the void
+    // beyond the Sky shader transitions cleanly too.
+    const dayCol = new THREE.Color(0x87ceeb);
+    const nightCol = new THREE.Color(0x0c1530);
+    scene.background = dayCol.clone().lerp(nightCol, night);
+    // Only push a new lamp brightness when it changes by ≥ 0.1, so React
+    // doesn't re-render every frame.
+    const targetLamp = 0.3 + night * 1.5;
+    const rounded = Math.round(targetLamp * 10) / 10;
+    setLampBrightness((cur) => (Math.abs(cur - rounded) < 0.05 ? cur : rounded));
   });
 
   return (
     <>
-      <Sky sunPosition={[100, 20, 100]} turbidity={6} rayleigh={1} mieCoefficient={0.005} mieDirectionalG={0.7} />
-      <ambientLight intensity={0.55} />
+      <Sky sunPosition={sunPos.current} turbidity={6} rayleigh={1} mieCoefficient={0.005} mieDirectionalG={0.7} />
+      <ambientLight ref={ambLightRef} intensity={0.55} />
       <directionalLight
+        ref={dirLightRef}
         position={[20, 25, 10]}
         intensity={1}
         castShadow
@@ -127,7 +156,7 @@ function World({
         <planeGeometry args={[100, 100]} />
         <meshStandardMaterial color="#4ade80" />
       </mesh>
-      {/* Path strips so the world doesn't look like an empty lawn */}
+      {/* Cross paths */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
         <planeGeometry args={[3, 60]} />
         <meshStandardMaterial color="#a3a3a3" />
@@ -150,10 +179,36 @@ function World({
       ))}
 
       <Fence />
-      <Lamps />
+      <Lamps brightness={lampBrightness} />
       <Trees exclusion={SPOTS.map((s) => ({ x: s.position[0], z: s.position[1], r: Math.max(s.size[0], s.size[2]) / 2 }))} />
 
-      {/* A handful of wandering townsfolk so the world isn't empty */}
+      <ParkedCars />
+      <MovingCar start={-18} color="#2563eb" speed={5} range={22} />
+      <MovingCar start={6} color="#dc2626" speed={4} range={22} />
+
+      {/* Tutorial NPC stationed near the player spawn. */}
+      <group position={[3, 0, 9]}>
+        <mesh position={[0, 0.7, 0]} castShadow>
+          <capsuleGeometry args={[0.34, 0.7, 4, 12]} />
+          <meshStandardMaterial color="#fcd34d" />
+        </mesh>
+        <mesh position={[0, 1.5, 0]} castShadow>
+          <sphereGeometry args={[0.27, 16, 16]} />
+          <meshStandardMaterial color="#fde68a" />
+        </mesh>
+        <Text
+          position={[0, 2.8, 0]}
+          fontSize={0.32}
+          color="white"
+          anchorX="center"
+          outlineWidth={0.03}
+          outlineColor="#000"
+          maxWidth={6}
+        >
+          👋 Welcome! Walk up to a building and tap Enter to do your thing.
+        </Text>
+      </group>
+
       <NPC color="#f87171" start={[10, -3]} speed={2.4} />
       <NPC color="#60a5fa" start={[-8, 5]} speed={2.0} />
       <NPC color="#fbbf24" start={[2, -22]} speed={3.0} />
@@ -161,37 +216,33 @@ function World({
       <NPC color="#34d399" start={[18, -14]} speed={2.2} />
       <NPC color="#f472b6" start={[-3, 22]} speed={2.8} />
 
+      <CashPickups playerPos={playerPos} />
+
       <Player ref={playerRef} />
     </>
   );
 }
 
-// Outer wrapper: holds the joystick ref + currently-nearest spot in React
-// state, and exposes both into the Canvas via stable refs / setters.
+// Public wrapper — owns the Canvas, switches between outdoor World and the
+// CasinoInterior depending on `mode`.
 export default function TownScene({
-  onEnter,
+  mode,
   joystick,
+  onNearestSpot,
+  onNearestInterior,
 }: {
-  onEnter: (route: string) => void;
+  mode: "town" | "casino";
   joystick: React.MutableRefObject<{ x: number; y: number }>;
+  onNearestSpot: (spot: Spot | null) => void;
+  onNearestInterior: (target: null | "exit" | string) => void;
 }) {
-  const [nearest, setNearest] = useState<Spot | null>(null);
-  const [enterTarget, setEnterTarget] = useState<string | null>(null);
-
   return (
-    <>
-      <Canvas shadows camera={{ position: [0, 16, 24], fov: 50 }} style={{ position: "fixed", inset: 0 }}>
-        <World moveRef={joystick} onNearestChange={setNearest} setReadyToEnter={setEnterTarget} />
-      </Canvas>
-
-      {nearest && enterTarget && (
-        <button
-          onClick={() => onEnter(enterTarget)}
-          className="fixed bottom-8 right-8 z-30 rounded-2xl bg-accent px-6 py-4 text-base font-bold text-black shadow-xl active:brightness-90"
-        >
-          ▶ Enter {nearest.emoji} {nearest.label}
-        </button>
+    <Canvas shadows camera={{ position: [0, 16, 24], fov: 50 }} style={{ position: "fixed", inset: 0 }}>
+      {mode === "town" ? (
+        <World moveRef={joystick} onNearestChange={onNearestSpot} />
+      ) : (
+        <CasinoInterior moveRef={joystick} onNearChange={onNearestInterior} />
       )}
-    </>
+    </Canvas>
   );
 }

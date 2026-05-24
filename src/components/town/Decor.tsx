@@ -41,9 +41,10 @@ export function Trees({ count = 24, exclusion }: { count?: number; exclusion: Ar
   );
 }
 
-// Lamp posts along the cross-paths so the town feels populated. Cheap, just
-// a tall cylinder with a glowing emissive sphere on top.
-export function Lamps() {
+// Lamp posts along the cross-paths so the town feels populated. The bulb's
+// emissive intensity scales with the day/night cycle — barely lit at noon,
+// bright at midnight.
+export function Lamps({ brightness = 0.8 }: { brightness?: number }) {
   const positions: Array<[number, number]> = [
     [-12, 0], [12, 0], [0, -12], [0, 12],
     [-20, -20], [20, -20], [-20, 20], [20, 20],
@@ -58,8 +59,12 @@ export function Lamps() {
           </mesh>
           <mesh position={[0, 3.3, 0]}>
             <sphereGeometry args={[0.22, 12, 12]} />
-            <meshStandardMaterial color="#fde68a" emissive="#fde68a" emissiveIntensity={0.8} />
+            <meshStandardMaterial color="#fde68a" emissive="#fde68a" emissiveIntensity={brightness} />
           </mesh>
+          {/* Local point light kicks in noticeably at night */}
+          {brightness > 0.8 && (
+            <pointLight position={[0, 3.3, 0]} color="#fde68a" intensity={(brightness - 0.5) * 0.5} distance={6} decay={2} />
+          )}
         </group>
       ))}
     </>
