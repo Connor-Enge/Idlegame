@@ -27,6 +27,30 @@ export interface DialogPayload {
 }
 
 const STEP_MS = 170; // duration of one tile step
+const DAY_LENGTH_MS = 300_000; // 5 min real time = one full day cycle
+
+// Day-night palette. tod is 0..1; 0 = midnight, 0.5 = noon. Returns a tint
+// colour + opacity that we paint over the world with `mix-blend-mode:
+// multiply` so the underlying tiles stay readable but feel warmer / cooler.
+function dayTint(tod: number): { color: string; opacity: number } {
+  // Sun height: 0 at midnight, 1 at noon.
+  const sun = Math.max(0, Math.sin(tod * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+  if (sun < 0.15) {
+    // Deep night → indigo overlay
+    return { color: "#0c1530", opacity: 0.55 - sun * 0.5 };
+  }
+  if (sun < 0.35) {
+    // Dawn / dusk — depend on which side of noon we're on.
+    const isDawn = tod < 0.5;
+    return { color: isDawn ? "#fb923c" : "#ec4899", opacity: 0.32 };
+  }
+  if (sun < 0.7) {
+    // Morning / afternoon — mild warm tint
+    return { color: "#fde68a", opacity: 0.12 };
+  }
+  // Full day — clear
+  return { color: "#ffffff", opacity: 0 };
+}
 
 // All possible movement directions, with the (dx, dy) they apply to (x, y).
 const DIRS: Record<Dir, { dx: number; dy: number }> = {
@@ -54,6 +78,16 @@ export default function Overworld({
   onDialog: (payload: DialogPayload) => void;
 }) {
   const npcsRef = useRef<NPCsHandle>(null);
+  // Time of day, persists for the page lifetime. Starts at noon so the first
+  // load shows a clear daylight scene.
+  const [tod, setTod] = useState(0.5);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTod((cur) => (cur + 200 / DAY_LENGTH_MS) % 1);
+    }, 200);
+    return () => clearInterval(t);
+  }, []);
+  const tint = dayTint(tod);
   const [px, setPx] = useState(SPAWN.x); // tile-x at rest
   const [py, setPy] = useState(SPAWN.y);
   const [facing, setFacing] = useState<Dir>("down");
@@ -168,6 +202,21 @@ export default function Overworld({
       className="relative mx-auto overflow-hidden bg-[#162017]"
       style={{ width: VIEW_PX_W, height: VIEW_PX_H, imageRendering: "pixelated" }}
     >
+      {/* Day/night tint overlay — covers the viewport, sits above the world
+          but beneath any HUD. Uses multiply so dark tiles get darker and
+          light tiles get coloured without losing detail. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: tint.color,
+          opacity: tint.opacity,
+          mixBlendMode: "multiply",
+          pointerEvents: "none",
+          zIndex: 60,
+          transition: "background 400ms linear, opacity 400ms linear",
+        }}
+      />
       <div
         style={{
           position: "absolute",
