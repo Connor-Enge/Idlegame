@@ -16,6 +16,7 @@ import BuildingModal from "@/components/town2d/BuildingModal";
 import Dialog from "@/components/town2d/Dialog";
 import type { Dir } from "@/components/town2d/Sprite";
 import type { DoorInfo } from "@/components/town2d/map";
+import type { DialogPayload } from "@/components/town2d/Overworld";
 
 // The overworld manipulates the DOM via rAF — load it client-only so SSR
 // doesn't try to render the camera loop.
@@ -26,7 +27,7 @@ export default function TownPage() {
   const run = useGame((s) => s.run);
   const [heldDir, setHeldDir] = useState<Dir | null>(null);
   const [activeDoor, setActiveDoor] = useState<DoorInfo | null>(null);
-  const [dialogLines, setDialogLines] = useState<string[] | null>(null);
+  const [dialog, setDialog] = useState<DialogPayload | null>(null);
 
   const quest = currentQuest(state);
   const retirable = state ? canRetire(state) : false;
@@ -54,7 +55,7 @@ export default function TownPage() {
       {/* Overworld viewport — fixed-size, centered. The viewport is smaller
           than the full map; camera scrolls inside it. */}
       <div className="flex flex-1 items-center justify-center overflow-hidden">
-        <Overworld heldDir={heldDir} onEnterDoor={setActiveDoor} onReadSign={setDialogLines} />
+        <Overworld heldDir={heldDir} onEnterDoor={setActiveDoor} onDialog={setDialog} />
       </div>
 
       {/* Bottom row: menu link + quest tracker. */}
@@ -110,10 +111,10 @@ export default function TownPage() {
 
       {/* Dialog box — sign + NPC text. Lives in front of the world but
           beneath the building modal so entering a building cleanly hides it. */}
-      {dialogLines && (
+      {dialog && (
         <Dialog
-          lines={dialogLines.map((text) => ({ text }))}
-          onClose={() => setDialogLines(null)}
+          lines={dialog.lines.map((text) => ({ text, who: dialog.who }))}
+          onClose={() => setDialog(null)}
         />
       )}
     </div>

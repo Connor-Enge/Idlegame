@@ -18,8 +18,13 @@ import {
   type DoorInfo,
 } from "./map";
 import { PlayerSprite, type Dir } from "./Sprite";
-import NPCs from "./NPCs";
+import NPCs, { type NPCsHandle } from "./NPCs";
 import Pickups from "./Pickups";
+
+export interface DialogPayload {
+  who?: string;
+  lines: string[];
+}
 
 const STEP_MS = 170; // duration of one tile step
 
@@ -42,12 +47,13 @@ const VIEW_PX_H = VIEW_H * TILE; // 576
 export default function Overworld({
   heldDir,
   onEnterDoor,
-  onReadSign,
+  onDialog,
 }: {
   heldDir: Dir | null;
   onEnterDoor: (door: DoorInfo) => void;
-  onReadSign: (lines: string[]) => void;
+  onDialog: (payload: DialogPayload) => void;
 }) {
+  const npcsRef = useRef<NPCsHandle>(null);
   const [px, setPx] = useState(SPAWN.x); // tile-x at rest
   const [py, setPy] = useState(SPAWN.y);
   const [facing, setFacing] = useState<Dir>("down");
@@ -131,7 +137,13 @@ export default function Overworld({
     const sign = signAt(tx, ty);
     if (sign) {
       heldRef.current = null;
-      onReadSign(sign);
+      onDialog({ lines: sign });
+      return;
+    }
+    const npc = npcsRef.current?.npcAt(tx, ty);
+    if (npc) {
+      heldRef.current = null;
+      onDialog({ who: npc.name, lines: npc.lines });
       return;
     }
     if (!isWalkable(tx, ty)) return; // blocked — face only
@@ -170,8 +182,8 @@ export default function Overworld({
         {/* Money pickups — collected when the player's tile matches. */}
         <Pickups playerTile={{ x: px, y: py }} onCollect={onCashCollect} />
 
-        {/* Wandering NPCs — purely decorative, don't block the player. */}
-        <NPCs />
+        {/* Wandering NPCs — bumping into one opens their dialog. */}
+        <NPCs ref={npcsRef} />
 
         {/* Player — rendered above tiles. Pixel position interpolated. */}
         <div
