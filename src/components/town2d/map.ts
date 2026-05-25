@@ -98,12 +98,12 @@ const MAP_RAW = [
   "F.,...rrrrr,,..,,ccccc...F",
   "F.,...rrrrr,,..,,ccccc...F",
   "F.,t..rrRrr,,..,,ccCcc..tF",
-  "F.,t..............tt....tF",
+  "F.,t....,..........,....tF",
   "F.,,,,,,,,,,,,,,,,,,,,,,.F",
   "F.,...yyyyy,,..,,lllll...F",
   "F.,...yyyyy,,..,,lllll...F",
   "F.,...yyTyy,,..,,llLll..tF",
-  "F.tt..............t.....tF",
+  "F.......,..........,....tF",
   "FFFFFFFFFFFFFFFFFFFFFFFFFF",
 ];
 
